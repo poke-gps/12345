@@ -257,7 +257,7 @@ except Exception, e:
 
 # Expectations
 
-EXPECTED_LLVM_VERSION = (3,2)
+EXPECTED_LLVM_VERSION = (3,3)
 
 def check_clang_version():
   expected = 'clang version ' + '.'.join(map(str, EXPECTED_LLVM_VERSION))
@@ -295,7 +295,7 @@ def check_node_version():
 # we re-check sanity when the settings are changed)
 # We also re-check sanity and clear the cache when the version changes
 
-EMSCRIPTEN_VERSION = '1.4.3'
+EMSCRIPTEN_VERSION = '1.5.0'
 
 def generate_sanity():
   return EMSCRIPTEN_VERSION + '|' + get_llvm_target()
