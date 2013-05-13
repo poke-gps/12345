@@ -4175,7 +4175,7 @@ def process(filename):
 
     def test_varargs_byval(self):
       if Settings.USE_TYPED_ARRAYS != 2: return self.skip('FIXME: Add support for this')
-      if self.is_le32(): return self.skip('clang cannot compile this code with that target yet')
+      if self.is_le32(): return self.skip('clang cannot compile this code with that target yet') # still an issue in 3.3
 
       src = r'''
         #include <stdio.h>
