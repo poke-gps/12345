@@ -115,7 +115,8 @@ var Debugging = {
         m = metadataToParentMetadata[m];
         assert(m, 'Confused as to parent metadata for llvm #' + l + ', metadata !' + m);
       }
-      this.llvmLineToSourceFile[l] = metadataToFilename[m];
+      // Normalize Windows path slashes coming from LLVM metadata, so that forward slashes can be assumed as path delimiters.
+      this.llvmLineToSourceFile[l] = metadataToFilename[m].replace(/\\5C/g, '/');
     }
 
     this.on = true;
@@ -230,6 +231,8 @@ var Types = {
   preciseI64MathUsed: (PRECISE_I64_MATH == 2)
 };
 
+var firstTableIndex = (ASM_JS ? 2*RESERVED_FUNCTION_POINTERS : 0) + 2;
+
 var Functions = {
   // All functions that will be implemented in this file. Maps id to signature
   implementedFunctions: {},
@@ -237,40 +240,66 @@ var Functions = {
   unimplementedFunctions: {}, // library etc. functions that we need to index, maps id to signature
 
   indexedFunctions: {},
-  nextIndex: (ASM_JS ? 2*RESERVED_FUNCTION_POINTERS : 0) + 2, // Start at a non-0 (even, see below) value
+  nextIndex: firstTableIndex, // Start at a non-0 (even, see below) value
+  neededTables: set('v', 'vi', 'ii', 'iii'), // signatures that appeared (initialized with library stuff
+                                             // we always use), and we will need a function table for
 
   blockAddresses: {}, // maps functions to a map of block labels to label ids
+
+  aliases: {}, // in shared modules (MAIN_MODULE or SHARED_MODULE), a list of aliases for functions that have them
 
   getSignature: function(returnType, argTypes, hasVarArgs) {
     var sig = returnType == 'void' ? 'v' : (isIntImplemented(returnType) ? 'i' : 'f');
     for (var i = 0; i < argTypes.length; i++) {
       var type = argTypes[i];
       if (!type) break; // varargs
-      sig += isIntImplemented(type) ? (getBits(type) == 64 ? 'ii' : 'i') : 'f'; // legalized i64s will be i32s
+      if (type in Runtime.FLOAT_TYPES) {
+        sig += 'f';
+      } else {
+        var chunks = getNumIntChunks(type);
+        for (var j = 0; j < chunks; j++) sig += 'i';
+      }
     }
     if (hasVarArgs) sig += 'i';
     return sig;
   },
 
+  getSignatureReturnType: function(sig) {
+    switch(sig[0]) {
+      case 'v': return 'void';
+      case 'i': return 'i32';
+      case 'f': return 'double';
+      default: throw 'what is this sig? ' + sig;
+    }
+  },
+
   // Mark a function as needing indexing. Python will coordinate them all
-  getIndex: function(ident, doNotCreate) {
+  getIndex: function(ident, doNotCreate, sig) {
     if (doNotCreate && !(ident in this.indexedFunctions)) {
       if (!Functions.getIndex.tentative) Functions.getIndex.tentative = {}; // only used by GL emulation; TODO: generalize when needed
       Functions.getIndex.tentative[ident] = 0;
     }
+    var ret;
     if (phase != 'post' && singlePhase) {
       if (!doNotCreate) this.indexedFunctions[ident] = 0; // tell python we need this indexized
-      return "'{{ FI_" + toNiceIdent(ident) + " }}'"; // something python will replace later
+      ret = "'{{ FI_" + toNiceIdent(ident) + " }}'"; // something python will replace later
     } else {
-      var ret = this.indexedFunctions[ident];
+      if (!singlePhase) return 'NO_INDEX'; // Should not index functions in post
+      ret = this.indexedFunctions[ident];
       if (!ret) {
         if (doNotCreate) return '0';
         ret = this.nextIndex;
         this.nextIndex += 2; // Need to have indexes be even numbers, see |polymorph| test
         this.indexedFunctions[ident] = ret;
       }
-      return ret.toString();
+      ret = ret.toString();
     }
+    if (SIDE_MODULE && sig) { // sig can be undefined for the GL library functions
+      ret = '((F_BASE_' + sig + ' + ' + ret + ')|0)';
+    } else if (BUILD_AS_SHARED_LIB) {
+      ret = '(FUNCTION_TABLE_OFFSET + ' + ret + ')';
+    }
+    return ret;
   },
 
   getTable: function(sig) {
@@ -279,25 +308,25 @@ var Functions = {
 
   // Generate code for function indexing
   generateIndexing: function() {
-    var total = this.nextIndex;
-    if (ASM_JS) total = ceilPowerOfTwo(total); // must be power of 2 for mask
-    function emptyTable(sig) {
-      return zeros(total);
-    }
     var tables = { pre: '' };
     if (ASM_JS) {
-      ['v', 'vi', 'ii', 'iii'].forEach(function(sig) { // add some default signatures that are used in the library
-        tables[sig] = emptyTable(sig); // TODO: make them compact
+      keys(Functions.neededTables).forEach(function(sig) { // add some default signatures that are used in the library
+        tables[sig] = zeros(firstTableIndex);
       });
     }
     for (var ident in this.indexedFunctions) {
       var sig = ASM_JS ? Functions.implementedFunctions[ident] || Functions.unimplementedFunctions[ident] || LibraryManager.library[ident.substr(1) + '__sig'] : 'x';
       assert(sig, ident);
-      if (!tables[sig]) tables[sig] = emptyTable(sig); // TODO: make them compact
-      tables[sig][this.indexedFunctions[ident]] = ident;
+      if (!tables[sig]) tables[sig] = zeros(firstTableIndex);
+      var index = this.indexedFunctions[ident];
+      for (var i = tables[sig].length; i < index; i++) {
+        tables[sig][i] = 0; // keep flat
+      }
+      tables[sig][index] = ident;
     }
     var generated = false;
     var wrapped = {};
+    var maxTable = 0;
     for (var t in tables) {
       if (t == 'pre') continue;
       generated = true;
@@ -306,7 +335,7 @@ var Functions = {
         // Resolve multi-level aliases all the way down
         while (1) {
           var varData = Variables.globals[table[i]];
-          if (!(varData && varData.resolvedAlias)) break;
+          if (!(varData && varData.resolvedAlias && varData.resolvedAlias.indexOf('FUNCTION_TABLE_OFFSET') < 0)) break;
           table[i] = table[+varData.resolvedAlias || eval(varData.resolvedAlias)]; // might need to eval to turn (6) into 6
         }
         // Resolve library aliases
@@ -337,6 +366,7 @@ var Functions = {
                 call += (j > 1 ? ',' : '') + asmCoercion('a' + j, t[j] != 'i' ? 'float' : 'i32');
               }
               call += ')';
+              if (curr == '_setjmp') printErr('WARNING: setjmp used via a function pointer. If this is for libc setjmp (not something of your own with the same name), it will break things');
               tables.pre += 'function ' + curr + '__wrapper(' + args + ') { ' + arg_coercions + ' ; ' + retPre + call + retPost + ' }\n';
               wrapped[curr] = 1;
             }
@@ -352,6 +382,21 @@ var Functions = {
           j += 10;
         }
       }
+      maxTable = Math.max(maxTable, table.length);
+    }
+    if (ASM_JS) maxTable = ceilPowerOfTwo(maxTable);
+    for (var t in tables) {
+      if (t == 'pre') continue;
+      var table = tables[t];
+      if (ASM_JS) {
+        // asm function table mask must be power of two
+        // if nonaliasing, then standardize function table size, to avoid aliasing pointers through the &M mask (in a small table using a big index)
+        var fullSize = ALIASING_FUNCTION_POINTERS ? ceilPowerOfTwo(table.length) : maxTable;
+        for (var i = table.length; i < fullSize; i++) {
+          table[i] = 0;
+        }
+      }
+      // finalize table
       var indices = table.toString().replace('"', '');
       if (BUILD_AS_SHARED_LIB) {
         // Shared libraries reuse the parent's function table.
@@ -419,7 +464,8 @@ var PassManager = {
         Types: Types,
         Variables: Variables,
         Functions: Functions,
-        EXPORTED_FUNCTIONS: EXPORTED_FUNCTIONS // needed for asm.js global constructors (ctors)
+        EXPORTED_FUNCTIONS: EXPORTED_FUNCTIONS, // needed for asm.js global constructors (ctors)
+        Runtime: { GLOBAL_BASE: Runtime.GLOBAL_BASE }
       }));
     } else if (phase == 'funcs') {
       print('\n//FORWARDED_DATA:' + JSON.stringify({
@@ -429,6 +475,7 @@ var PassManager = {
           indexedFunctions: Functions.indexedFunctions,
           implementedFunctions: ASM_JS ? Functions.implementedFunctions : [],
           unimplementedFunctions: Functions.unimplementedFunctions,
+          neededTables: Functions.neededTables
         }
       }));
     } else if (phase == 'post') {

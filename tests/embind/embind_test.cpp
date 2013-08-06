@@ -1084,6 +1084,7 @@ public:
         return "optional" + s;
     }
 
+    virtual std::shared_ptr<Derived> returnsSharedPtr() = 0;
     virtual void differentArguments(int i, double d, unsigned char f, double q, std::string) = 0;
 };
 
@@ -1103,6 +1104,10 @@ public:
         }, s);
     }
 
+    std::shared_ptr<Derived> returnsSharedPtr() {
+        return call<std::shared_ptr<Derived> >("returnsSharedPtr");
+    }
+
     void differentArguments(int i, double d, unsigned char f, double q, std::string s) {
         return call<void>("differentArguments", i, d, f, q, s);
     }
@@ -1116,6 +1121,10 @@ class ConcreteClass : public AbstractClass {
 
     void differentArguments(int i, double d, unsigned char f, double q, std::string s) {
     }
+
+    std::shared_ptr<Derived> returnsSharedPtr() {
+        return std::shared_ptr<Derived>();
+    }
 };
 
 std::shared_ptr<AbstractClass> getAbstractClass() {
@@ -1128,6 +1137,11 @@ std::string callAbstractMethod(AbstractClass& ac) {
 
 std::string callOptionalMethod(AbstractClass& ac, std::string s) {
     return ac.optionalMethod(s);
+}
+
+void callReturnsSharedPtrMethod(AbstractClass& ac) {
+    std::shared_ptr<Derived> sp = ac.returnsSharedPtr();
+    // unused: sp
 }
 
 void callDifferentArguments(AbstractClass& ac, int i, double d, unsigned char f, double q, std::string s) {
@@ -1145,7 +1159,27 @@ EMSCRIPTEN_BINDINGS(interface_tests) {
     function("getAbstractClass", &getAbstractClass);
     function("callAbstractMethod", &callAbstractMethod);
     function("callOptionalMethod", &callOptionalMethod);
+    function("callReturnsSharedPtrMethod", &callReturnsSharedPtrMethod);
     function("callDifferentArguments", &callDifferentArguments);
+}
+
+template<typename T, size_t sizeOfArray>
+constexpr size_t getElementCount(T (&)[sizeOfArray]) {
+    return sizeOfArray;
+}
+
+static void callWithMemoryView(val v) {
+    // static so the JS test can read the memory after callTakeMemoryView runs
+    static unsigned char data[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    v(memory_view(getElementCount(data), data));
+    static float f[] = { 1.5f, 2.5f, 3.5f, 4.5f };
+    v(typed_memory_view(getElementCount(f), f));
+    static short s[] = { 1000, 100, 10, 1 };
+    v(typed_memory_view(getElementCount(s), s));
+}
+
+EMSCRIPTEN_BINDINGS(memory_view_tests) {
+    function("callWithMemoryView", &callWithMemoryView);
 }
 
 class HasExternalConstructor {
@@ -1411,7 +1445,7 @@ EMSCRIPTEN_BINDINGS(tests) {
 
     //function("emval_test_take_and_return_CustomStruct", &emval_test_take_and_return_CustomStruct);
 
-    value_tuple<TupleVector>("TupleVector")
+    value_array<TupleVector>("TupleVector")
         .element(&TupleVector::x)
         .element(&Vector::getY, &Vector::setY)
         .element(&readVectorZ, &writeVectorZ)
@@ -1421,13 +1455,13 @@ EMSCRIPTEN_BINDINGS(tests) {
     function("emval_test_return_TupleVector", &emval_test_return_TupleVector);
     function("emval_test_take_and_return_TupleVector", &emval_test_take_and_return_TupleVector);
 
-    value_tuple<TupleVectorTuple>("TupleVectorTuple")
+    value_array<TupleVectorTuple>("TupleVectorTuple")
         .element(&TupleVectorTuple::v)
         ;
 
     function("emval_test_return_TupleVectorTuple", &emval_test_return_TupleVectorTuple);
 
-    value_struct<StructVector>("StructVector")
+    value_object<StructVector>("StructVector")
         .field("x", &StructVector::x)
         .field("y", &Vector::getY, &Vector::setY)
         .field("z", &readVectorZ, &writeVectorZ)
@@ -1437,7 +1471,7 @@ EMSCRIPTEN_BINDINGS(tests) {
     function("emval_test_return_StructVector", &emval_test_return_StructVector);
     function("emval_test_take_and_return_StructVector", &emval_test_take_and_return_StructVector);
 
-    value_struct<TupleInStruct>("TupleInStruct")
+    value_object<TupleInStruct>("TupleInStruct")
         .field("field", &TupleInStruct::field)
         ;
 
@@ -1831,7 +1865,7 @@ int overloaded_function(int i, int j) {
 
 class MultipleCtors {
 public:
-    int value;
+    int value = 0;
 
     MultipleCtors(int i) {
         value = 1;
@@ -1847,6 +1881,25 @@ public:
         assert(i == 30);
         assert(j == 30);
         assert(k == 30);
+    }
+
+    int WhichCtorCalled() const {
+        return value;
+    }
+};
+
+class MultipleSmartCtors {
+public:
+    int value = 0;
+
+    MultipleSmartCtors(int i) {
+        value = 1;
+        assert(i == 10);
+    }
+    MultipleSmartCtors(int i, int j) {
+        value = 2;
+        assert(i == 20);
+        assert(j == 20);
     }
 
     int WhichCtorCalled() const {
@@ -1960,7 +2013,15 @@ EMSCRIPTEN_BINDINGS(overloads) {
         .constructor<int>()
         .constructor<int, int>()
         .constructor<int, int, int>()
-        .function("WhichCtorCalled", &MultipleCtors::WhichCtorCalled);
+        .function("WhichCtorCalled", &MultipleCtors::WhichCtorCalled)
+        ;
+        
+    class_<MultipleSmartCtors>("MultipleSmartCtors")
+        .smart_ptr<std::shared_ptr<MultipleSmartCtors>>()
+        .constructor(&std::make_shared<MultipleSmartCtors, int>)
+        .constructor(&std::make_shared<MultipleSmartCtors, int, int>)
+        .function("WhichCtorCalled", &MultipleSmartCtors::WhichCtorCalled)
+        ;
         
     class_<MultipleOverloads>("MultipleOverloads")
         .constructor<>()
@@ -2016,12 +2077,12 @@ OrderedStruct getOrderedStruct() {
 }
 
 EMSCRIPTEN_BINDINGS(order) {
-    value_tuple<OrderedTuple>("OrderedTuple")
+    value_array<OrderedTuple>("OrderedTuple")
         .element(&OrderedTuple::first)
         .element(&OrderedTuple::second)
         ;
 
-    value_struct<OrderedStruct>("OrderedStruct")
+    value_object<OrderedStruct>("OrderedStruct")
         .field("first", &OrderedStruct::first)
         .field("second", &OrderedStruct::second)
         ;
@@ -2154,10 +2215,10 @@ EMSCRIPTEN_BINDINGS(constants) {
     constant("STRING_CONSTANT", std::string("some string"));
 
     TupleVector tv(1, 2, 3, 4);
-    constant("VALUE_TUPLE_CONSTANT", tv);
+    constant("VALUE_ARRAY_CONSTANT", tv);
 
     StructVector sv(1, 2, 3, 4);
-    constant("VALUE_STRUCT_CONSTANT", sv);
+    constant("VALUE_OBJECT_CONSTANT", sv);
 }
 
 class DerivedWithOffset : public DummyDataToTestPointerAdjustment, public Base {    
@@ -2173,4 +2234,12 @@ EMSCRIPTEN_BINDINGS(with_adjustment) {
         ;
 
     function("return_Base_from_DerivedWithOffset", &return_Base_from_DerivedWithOffset);
+}
+
+void clear_StringHolder(StringHolder& sh) {
+    sh.set("");
+}
+
+EMSCRIPTEN_BINDINGS(references) {
+    function("clear_StringHolder", &clear_StringHolder);
 }

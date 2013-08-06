@@ -34,17 +34,18 @@ extern "C" {
 #define SO_LINGER 130
 #define SO_BSDCOMPAT 140
 
-#define SHUT_RD 1
+#define SHUT_RD 0
+#define SHUT_WR 1
 #define SHUT_RDWR 2
 
 typedef unsigned int sa_family_t;
-#define AF_INET 1
+#define AF_INET PF_INET
 #define AF_INET6 6
 #define PF_INET6 AF_INET6
 
 struct sockaddr {
   sa_family_t sa_family; 
-  char        sa_data[];
+  char        sa_data[16];
 };
 
 struct sockaddr_storage {

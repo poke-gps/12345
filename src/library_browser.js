@@ -6,7 +6,8 @@ mergeInto(LibraryManager.library, {
   $Browser__postset: 'Module["requestFullScreen"] = function(lockPointer, resizeCanvas) { Browser.requestFullScreen(lockPointer, resizeCanvas) };\n' + // exports
                      'Module["requestAnimationFrame"] = function(func) { Browser.requestAnimationFrame(func) };\n' +
                      'Module["pauseMainLoop"] = function() { Browser.mainLoop.pause() };\n' +
-                     'Module["resumeMainLoop"] = function() { Browser.mainLoop.resume() };\n',
+                     'Module["resumeMainLoop"] = function() { Browser.mainLoop.resume() };\n' +
+                     'Module["getUserMedia"] = function() { Browser.getUserMedia() }',
   $Browser: {
     mainLoop: {
       scheduler: null,
@@ -46,8 +47,11 @@ mergeInto(LibraryManager.library, {
     workers: [],
 
     init: function() {
-      if (Browser.initted) return;
+      if (!Module["preloadPlugins"]) Module["preloadPlugins"] = []; // needs to exist even in workers
+
+      if (Browser.initted || ENVIRONMENT_IS_WORKER) return;
       Browser.initted = true;
+
       try {
         new Blob();
         Browser.hasBlobConstructor = true;
@@ -66,29 +70,19 @@ mergeInto(LibraryManager.library, {
       // (possibly modified) data. For example, a plugin might decompress a file, or it
       // might create some side data structure for use later (like an Image element, etc.).
 
-      function getMimetype(name) {
-        return {
-          'jpg': 'image/jpeg',
-          'jpeg': 'image/jpeg',
-          'png': 'image/png',
-          'bmp': 'image/bmp',
-          'ogg': 'audio/ogg',
-          'wav': 'audio/wav',
-          'mp3': 'audio/mpeg'
-        }[name.substr(name.lastIndexOf('.')+1)];
-      }
-
-      if (!Module["preloadPlugins"]) Module["preloadPlugins"] = [];
-
       var imagePlugin = {};
       imagePlugin['canHandle'] = function(name) {
-        return !Module.noImageDecoding && /\.(jpg|jpeg|png|bmp)$/.exec(name);
+        return !Module.noImageDecoding && /\.(jpg|jpeg|png|bmp)$/i.test(name);
       };
       imagePlugin['handle'] = function(byteArray, name, onload, onerror) {
         var b = null;
         if (Browser.hasBlobConstructor) {
           try {
-            b = new Blob([byteArray], { type: getMimetype(name) });
+            b = new Blob([byteArray], { type: Browser.getMimetype(name) });
+            if (b.size !== byteArray.length) { // Safari bug #118630
+              // Safari's Blob can only take an ArrayBuffer
+              b = new Blob([(new Uint8Array(byteArray)).buffer], { type: Browser.getMimetype(name) });
+            }
           } catch(e) {
             Runtime.warnOnce('Blob constructor present but fails: ' + e + '; falling back to blob builder');
           }
@@ -142,7 +136,7 @@ mergeInto(LibraryManager.library, {
         }
         if (Browser.hasBlobConstructor) {
           try {
-            var b = new Blob([byteArray], { type: getMimetype(name) });
+            var b = new Blob([byteArray], { type: Browser.getMimetype(name) });
           } catch(e) {
             return fail();
           }
@@ -184,7 +178,7 @@ mergeInto(LibraryManager.library, {
           };
           audio.src = url;
           // workaround for chrome bug 124926 - we do not always get oncanplaythrough or onerror
-          setTimeout(function() {
+          Browser.safeSetTimeout(function() {
             finish(audio); // try to use it even though it is not necessarily ready to play
           }, 10000);
         } else {
@@ -201,7 +195,8 @@ mergeInto(LibraryManager.library, {
                                   canvas['webkitRequestPointerLock'];
       canvas.exitPointerLock = document['exitPointerLock'] ||
                                document['mozExitPointerLock'] ||
-                               document['webkitExitPointerLock'];
+                               document['webkitExitPointerLock'] ||
+                               function(){}; // no-op if function does not exist
       canvas.exitPointerLock = canvas.exitPointerLock.bind(document);
 
       function pointerLockChange() {
@@ -311,10 +306,10 @@ mergeInto(LibraryManager.library, {
     lockPointer: undefined,
     resizeCanvas: undefined,
     requestFullScreen: function(lockPointer, resizeCanvas) {
-      this.lockPointer = lockPointer;
-      this.resizeCanvas = resizeCanvas;
-      if (typeof this.lockPointer === 'undefined') this.lockPointer = true;
-      if (typeof this.resizeCanvas === 'undefined') this.resizeCanvas = false;
+      Browser.lockPointer = lockPointer;
+      Browser.resizeCanvas = resizeCanvas;
+      if (typeof Browser.lockPointer === 'undefined') Browser.lockPointer = true;
+      if (typeof Browser.resizeCanvas === 'undefined') Browser.resizeCanvas = false;
 
       var canvas = Module['canvas'];
       function fullScreenChange() {
@@ -335,8 +330,8 @@ mergeInto(LibraryManager.library, {
         if (Module['onFullScreen']) Module['onFullScreen'](Browser.isFullScreen);
       }
 
-      if (!this.fullScreenHandlersInstalled) {
-        this.fullScreenHandlersInstalled = true;
+      if (!Browser.fullScreenHandlersInstalled) {
+        Browser.fullScreenHandlersInstalled = true;
         document.addEventListener('fullscreenchange', fullScreenChange, false);
         document.addEventListener('mozfullscreenchange', fullScreenChange, false);
         document.addEventListener('webkitfullscreenchange', fullScreenChange, false);
@@ -345,7 +340,7 @@ mergeInto(LibraryManager.library, {
       canvas.requestFullScreen = canvas['requestFullScreen'] ||
                                  canvas['mozRequestFullScreen'] ||
                                  (canvas['webkitRequestFullScreen'] ? function() { canvas['webkitRequestFullScreen'](Element['ALLOW_KEYBOARD_INPUT']) } : null);
-      canvas.requestFullScreen(); 
+      canvas.requestFullScreen();
     },
 
     requestAnimationFrame: function(func) {
@@ -360,6 +355,51 @@ mergeInto(LibraryManager.library, {
       window.requestAnimationFrame(func);
     },
 
+    // generic abort-aware wrapper for an async callback
+    safeCallback: function(func) {
+      return function() {
+        if (!ABORT) return func.apply(null, arguments);
+      };
+    },
+
+    // abort-aware versions
+    safeRequestAnimationFrame: function(func) {
+      return Browser.requestAnimationFrame(function() {
+        if (!ABORT) func();
+      });
+    },
+    safeSetTimeout: function(func, timeout) {
+      return setTimeout(function() {
+        if (!ABORT) func();
+      }, timeout);
+    },
+    safeSetInterval: function(func, timeout) {
+      return setInterval(function() {
+        if (!ABORT) func();
+      }, timeout);
+    },
+
+    getMimetype: function(name) {
+      return {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'bmp': 'image/bmp',
+        'ogg': 'audio/ogg',
+        'wav': 'audio/wav',
+        'mp3': 'audio/mpeg'
+      }[name.substr(name.lastIndexOf('.')+1)];
+    },
+    
+    getUserMedia: function(func) {
+      if(!window.getUserMedia) {
+        window.getUserMedia = navigator['getUserMedia'] ||
+                              navigator['mozGetUserMedia'];
+      }
+      window.getUserMedia(func);
+    },
+
+
     getMovementX: function(event) {
       return event['movementX'] ||
              event['mozMovementX'] ||
@@ -372,6 +412,56 @@ mergeInto(LibraryManager.library, {
              event['mozMovementY'] ||
              event['webkitMovementY'] ||
              0;
+    },
+
+    mouseX: 0,
+    mouseY: 0,
+    mouseMovementX: 0,
+    mouseMovementY: 0,
+
+    calculateMouseEvent: function(event) { // event should be mousemove, mousedown or mouseup
+      if (Browser.pointerLock) {
+        // When the pointer is locked, calculate the coordinates
+        // based on the movement of the mouse.
+        // Workaround for Firefox bug 764498
+        if (event.type != 'mousemove' &&
+            ('mozMovementX' in event)) {
+          Browser.mouseMovementX = Browser.mouseMovementY = 0;
+        } else {
+          Browser.mouseMovementX = Browser.getMovementX(event);
+          Browser.mouseMovementY = Browser.getMovementY(event);
+        }
+        
+        // check if SDL is available
+        if (typeof SDL != "undefined") {
+        	Browser.mouseX = SDL.mouseX + Browser.mouseMovementX;
+        	Browser.mouseY = SDL.mouseY + Browser.mouseMovementY;
+        } else {
+        	// just add the mouse delta to the current absolut mouse position
+        	// FIXME: ideally this should be clamped against the canvas size and zero
+        	Browser.mouseX += Browser.mouseMovementX;
+        	Browser.mouseY += Browser.mouseMovementY;
+        }        
+      } else {
+        // Otherwise, calculate the movement based on the changes
+        // in the coordinates.
+        var rect = Module["canvas"].getBoundingClientRect();
+        var x = event.pageX - (window.scrollX + rect.left);
+        var y = event.pageY - (window.scrollY + rect.top);
+
+        // the canvas might be CSS-scaled compared to its backbuffer;
+        // SDL-using content will want mouse coordinates in terms
+        // of backbuffer units.
+        var cw = Module["canvas"].width;
+        var ch = Module["canvas"].height;
+        x = x * (cw / rect.width);
+        y = y * (ch / rect.height);
+
+        Browser.mouseMovementX = x - Browser.mouseX;
+        Browser.mouseMovementY = y - Browser.mouseY;
+        Browser.mouseX = x;
+        Browser.mouseY = y;
+      }
     },
 
     xhrLoad: function(url, onload, onerror) {
@@ -428,22 +518,28 @@ mergeInto(LibraryManager.library, {
       this.windowedHeight = canvas.height;
       canvas.width = screen.width;
       canvas.height = screen.height;
-      var flags = {{{ makeGetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'i32', 0, 1) }}};
-      flags = flags | 0x00800000; // set SDL_FULLSCREEN flag
-      {{{ makeSetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'flags', 'i32') }}}
+      // check if SDL is available   
+      if (typeof SDL != "undefined") {
+      	var flags = {{{ makeGetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'i32', 0, 1) }}};
+      	flags = flags | 0x00800000; // set SDL_FULLSCREEN flag
+      	{{{ makeSetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'flags', 'i32') }}}
+      }
       Browser.updateResizeListeners();
     },
-    
+
     setWindowedCanvasSize: function() {
       var canvas = Module['canvas'];
       canvas.width = this.windowedWidth;
       canvas.height = this.windowedHeight;
-      var flags = {{{ makeGetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'i32', 0, 1) }}};
-      flags = flags & ~0x00800000; // clear SDL_FULLSCREEN flag
-      {{{ makeSetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'flags', 'i32') }}}
+      // check if SDL is available       
+      if (typeof SDL != "undefined") {
+      	var flags = {{{ makeGetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'i32', 0, 1) }}};
+      	flags = flags & ~0x00800000; // clear SDL_FULLSCREEN flag
+      	{{{ makeSetValue('SDL.screen+Runtime.QUANTUM_SIZE*0', '0', 'flags', 'i32') }}}
+      }
       Browser.updateResizeListeners();
     }
-    
+
   },
 
   emscripten_async_wget: function(url, file, onload, onerror) {
@@ -480,11 +576,11 @@ mergeInto(LibraryManager.library, {
     var _request = Pointer_stringify(request);
     var _param = Pointer_stringify(param);
     var index = _file.lastIndexOf('/');
-     
+
     var http = new XMLHttpRequest();
     http.open(_request, _url, true);
     http.responseType = 'arraybuffer';
-    
+
     // LOAD
     http.onload = function(e) {
       if (http.status == 200) {
@@ -494,20 +590,20 @@ mergeInto(LibraryManager.library, {
         if (onerror) Runtime.dynCall('vii', onerror, [arg, http.status]);
       }
     };
-      
+
     // ERROR
     http.onerror = function(e) {
       if (onerror) Runtime.dynCall('vii', onerror, [arg, http.status]);
     };
-	
+
     // PROGRESS
     http.onprogress = function(e) {
       var percentComplete = (e.position / e.totalSize)*100;
       if (onprogress) Runtime.dynCall('vii', onprogress, [arg, percentComplete]);
     };
-	  
+
     // Useful because the browser can limit the number of redirection
-    try {  
+    try {
       if (http.channel instanceof Ci.nsIHttpChannel)
       http.channel.redirectionLimit = 0;
     } catch (ex) { /* whatever */ }
@@ -522,7 +618,7 @@ mergeInto(LibraryManager.library, {
       http.send(null);
     }
   },
-  
+
   emscripten_async_prepare: function(file, onload, onerror) {
     var _file = Pointer_stringify(file);
     var data = FS.analyzePath(_file);
@@ -570,7 +666,7 @@ mergeInto(LibraryManager.library, {
     Module['noExitRuntime'] = true;
 
     // TODO: cache these to avoid generating garbage
-    setTimeout(function() {
+    Browser.safeSetTimeout(function() {
       _emscripten_run_script(script);
     }, millis);
   },
@@ -579,6 +675,7 @@ mergeInto(LibraryManager.library, {
     Module['noExitRuntime'] = true;
 
     Browser.mainLoop.runner = function() {
+      if (ABORT) return;
       if (Browser.mainLoop.queue.length > 0) {
         var start = Date.now();
         var blocker = Browser.mainLoop.queue.shift();
@@ -681,10 +778,15 @@ mergeInto(LibraryManager.library, {
     }
 
     if (millis >= 0) {
-      setTimeout(wrapper, millis);
+      Browser.safeSetTimeout(wrapper, millis);
     } else {
-      Browser.requestAnimationFrame(wrapper);
+      Browser.safeRequestAnimationFrame(wrapper);
     }
+  },
+
+  emscripten_exit_with_live_runtime: function() {
+    Module['noExitRuntime'] = true;
+    throw 'SimulateInfiniteLoop';
   },
 
   emscripten_hide_mouse: function() {
@@ -708,7 +810,7 @@ mergeInto(LibraryManager.library, {
         var t = process['hrtime']();
         return t[0] * 1e3 + t[1] / 1e6;
     }
-    else if (window['performance'] && window['performance']['now']) {
+    else if (ENVIRONMENT_IS_WEB && window['performance'] && window['performance']['now']) {
       return window['performance']['now']();
     } else {
       return Date.now();

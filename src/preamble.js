@@ -231,7 +231,7 @@ var setjmpId = 1; // Used in setjmp/longjmp
 var setjmpLabels = {};
 #endif
 
-var ABORT = false;
+var ABORT = false; // whether we are quitting the application. no code should run after this. set in exit() and abort()
 
 var undef = 0;
 // tempInt is used for 32-bit signed values or smaller. tempBigInt is used
@@ -241,12 +241,6 @@ var tempValue, tempInt, tempBigInt, tempInt2, tempBigInt2, tempPair, tempBigIntI
 var tempI64, tempI64b;
 var tempRet0, tempRet1, tempRet2, tempRet3, tempRet4, tempRet5, tempRet6, tempRet7, tempRet8, tempRet9;
 #endif
-
-function abort(text) {
-  Module.print(text + ':\n' + (new Error).stack);
-  ABORT = true;
-  throw "Assertion: " + text;
-}
 
 function assert(condition, text) {
   if (!condition) {
@@ -267,7 +261,7 @@ var globalScope = this;
 //
 // @param ident      The name of the C function (note that C++ functions will be name-mangled - use extern "C")
 // @param returnType The return type of the function, one of the JS types 'number', 'string' or 'array' (use 'number' for any C pointer, and
-//                   'array' for JavaScript arrays and typed arrays).
+//                   'array' for JavaScript arrays and typed arrays; note that arrays are 8-bit).
 // @param argTypes   An array of the types of arguments for the function (if there are no arguments, this can be ommitted). Types are as in returnType,
 //                   except that 'array' is not possible (there is no way for us to know the length of the array)
 // @param args       An array of the arguments to the function, as native JS values (as in returnType)
@@ -281,7 +275,7 @@ Module["ccall"] = ccall;
 // Returns the C function with a specified identifier (for C++, you need to do manual name mangling)
 function getCFunc(ident) {
   try {
-    var func = globalScope['Module']['_' + ident]; // closure exported function
+    var func = Module['_' + ident]; // closure exported function
     if (!func) func = eval('_' + ident); // explicit lookup
   } catch(e) {
   }
@@ -475,7 +469,11 @@ function allocate(slab, types, allocator, ptr) {
 
 #if USE_TYPED_ARRAYS == 2
   if (singleType === 'i8') {
-    HEAPU8.set(new Uint8Array(slab), ret);
+    if (slab.subarray || slab.slice) {
+      HEAPU8.set(slab, ret);
+    } else {
+      HEAPU8.set(new Uint8Array(slab), ret);
+    }
     return ret;
   }
 #endif
@@ -521,6 +519,9 @@ function Pointer_stringify(ptr, /* optional */ length) {
   var t;
   var i = 0;
   while (1) {
+#if ASSERTIONS
+    assert(ptr + i < TOTAL_MEMORY);
+#endif
     t = {{{ makeGetValue('ptr', 'i', 'i8', 0, 1) }}};
     if (t >= 128) hasUtf = true;
     else if (t == 0 && !length) break;
@@ -704,23 +705,74 @@ function callRuntimeCallbacks(callbacks) {
   }
 }
 
-var __ATINIT__ = []; // functions called during startup
-var __ATMAIN__ = []; // functions called when main() is to be run
-var __ATEXIT__ = []; // functions called during shutdown
+var __ATPRERUN__  = []; // functions called before the runtime is initialized
+var __ATINIT__    = []; // functions called during startup
+var __ATMAIN__    = []; // functions called when main() is to be run
+var __ATEXIT__    = []; // functions called during shutdown
+var __ATPOSTRUN__ = []; // functions called after the runtime has exited
 
 var runtimeInitialized = false;
+
+function preRun() {
+  // compatibility - merge in anything from Module['preRun'] at this time
+  if (Module['preRun']) {
+    if (typeof Module['preRun'] == 'function') Module['preRun'] = [Module['preRun']];
+    while (Module['preRun'].length) {
+      addOnPreRun(Module['preRun'].shift());
+    }
+  }
+  callRuntimeCallbacks(__ATPRERUN__);
+}
 
 function ensureInitRuntime() {
   if (runtimeInitialized) return;
   runtimeInitialized = true;
   callRuntimeCallbacks(__ATINIT__);
 }
+
 function preMain() {
   callRuntimeCallbacks(__ATMAIN__);
 }
+
 function exitRuntime() {
   callRuntimeCallbacks(__ATEXIT__);
 }
+
+function postRun() {
+  // compatibility - merge in anything from Module['postRun'] at this time
+  if (Module['postRun']) {
+    if (typeof Module['postRun'] == 'function') Module['postRun'] = [Module['postRun']];
+    while (Module['postRun'].length) {
+      addOnPostRun(Module['postRun'].shift());
+    }
+  }
+  callRuntimeCallbacks(__ATPOSTRUN__);
+}
+
+function addOnPreRun(cb) {
+  __ATPRERUN__.unshift(cb);
+}
+Module['addOnPreRun'] = Module.addOnPreRun = addOnPreRun;
+
+function addOnInit(cb) {
+  __ATINIT__.unshift(cb);
+}
+Module['addOnInit'] = Module.addOnInit = addOnInit;
+
+function addOnPreMain(cb) {
+  __ATMAIN__.unshift(cb);
+}
+Module['addOnPreMain'] = Module.addOnPreMain = addOnPreMain;
+
+function addOnExit(cb) {
+  __ATEXIT__.unshift(cb);
+}
+Module['addOnExit'] = Module.addOnExit = addOnExit;
+
+function addOnPostRun(cb) {
+  __ATPOSTRUN__.unshift(cb);
+}
+Module['addOnPostRun'] = Module.addOnPostRun = addOnPostRun;
 
 // Tools
 
@@ -777,7 +829,7 @@ Module['writeArrayToMemory'] = writeArrayToMemory;
 {{{ reSign }}}
 
 #if PRECISE_I32_MUL
-if (!Math.imul) Math.imul = function(a, b) {
+if (!Math['imul']) Math['imul'] = function(a, b) {
   var ah  = a >>> 16;
   var al = a & 0xffff;
   var bh  = b >>> 16;
@@ -785,10 +837,11 @@ if (!Math.imul) Math.imul = function(a, b) {
   return (al*bl + ((ah*bl + al*bh) << 16))|0;
 };
 #else
-Math.imul = function(a, b) {
+Math['imul'] = function(a, b) {
   return (a*b)|0; // fast but imprecise
 };
 #endif
+Math.imul = Math['imul'];
 
 // A counter of dependencies for calling run(). If we need to
 // do asynchronous work before running, increment this and
@@ -809,6 +862,7 @@ function addRunDependency(id) {
   if (id) {
     assert(!runDependencyTracking[id]);
     runDependencyTracking[id] = 1;
+#if ASSERTIONS
     if (runDependencyWatcher === null && typeof setInterval !== 'undefined') {
       // Check for missing dependencies every few seconds
       runDependencyWatcher = setInterval(function() {
@@ -823,8 +877,9 @@ function addRunDependency(id) {
         if (shown) {
           Module.printErr('(end of list)');
         }
-      }, 6000);
+      }, 10000);
     }
+#endif
   } else {
     Module.printErr('warning: run dependency added without ID');
   }
@@ -855,12 +910,6 @@ Module['removeRunDependency'] = removeRunDependency;
 Module["preloadedImages"] = {}; // maps url to image data
 Module["preloadedAudios"] = {}; // maps url to audio data
 
-function addPreRun(func) {
-  if (!Module['preRun']) Module['preRun'] = [];
-  else if (typeof Module['preRun'] == 'function') Module['preRun'] = [Module['preRun']];
-  Module['preRun'].push(func);
-}
-
 #if PGO
 var PGOMonitor = {
   called: {},
@@ -873,11 +922,10 @@ var PGOMonitor = {
     Module.print('-s DEAD_FUNCTIONS=\'' + JSON.stringify(dead) + '\'\n');
   }
 };
+Module['PGOMonitor'] = PGOMonitor;
 __ATEXIT__.push({ func: function() { PGOMonitor.dump() } });
-addPreRun(function() { addRunDependency('pgo') });
+addOnPreRun(function() { addRunDependency('pgo') });
 #endif
-
-var awaitingMemoryInitializer = false;
 
 function loadMemoryInitializer(filename) {
   function applyData(data) {
@@ -886,11 +934,10 @@ function loadMemoryInitializer(filename) {
 #else
     allocate(data, 'i8', ALLOC_NONE, STATIC_BASE);
 #endif
-    runPostSets();
   }
 
   // always do this asynchronously, to keep shell and web as similar as possible
-  addPreRun(function() {
+  addOnPreRun(function() {
     if (ENVIRONMENT_IS_NODE || ENVIRONMENT_IS_SHELL) {
       applyData(Module['readBinary'](filename));
     } else {
@@ -901,8 +948,6 @@ function loadMemoryInitializer(filename) {
       });
     }
   });
-
-  awaitingMemoryInitializer = false;
 }
 
 // === Body ===

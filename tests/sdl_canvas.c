@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 
   printf("Init: %d\n", TTF_Init());
 
-  TTF_Font *font = TTF_OpenFont("myfont.ttf", 40);
+  TTF_Font *font = TTF_OpenFont("sans-serif", 40);
   printf("Font: %p\n", font);
 
   SDL_Color color = { 0xff, 0x99, 0x00, 0xff };
@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
 
   // fill stuff
   SDL_Rect rect = { 200, 200, 175, 125 };
-  SDL_FillRect(screen, &rect, 0x2222ffff);
+  SDL_FillRect(screen, &rect, SDL_MapRGBA(screen->format, 0x22, 0x22, 0xff, 0xff));
 
   SDL_Flip(screen); 
 

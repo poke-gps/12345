@@ -25,26 +25,26 @@ var RuntimeGenerator = {
     sep = sep || ';';
     var ret = RuntimeGenerator.alloc(size, 'STACK', false, sep, USE_TYPED_ARRAYS != 2 || (isNumber(size) && parseInt(size) % {{{ STACK_ALIGN }}} == 0));
     if (ASSERTIONS) {
-      ret += sep + 'assert(' + asmCoercion('(STACKTOP|0) < (STACK_MAX|0)', 'i32') + ')';
+      ret += sep + '(assert(' + asmCoercion('(STACKTOP|0) < (STACK_MAX|0)', 'i32') + ')|0)';
     }
     return ret;
   },
 
   stackEnter: function(initial, force) {
     if (initial === 0 && SKIP_STACK_IN_SMALL && !force) return '';
-    var ret = 'var __stackBase__  = ' + (ASM_JS ? '0; __stackBase__ = ' : '') + 'STACKTOP';
+    var ret = 'var sp  = ' + (ASM_JS ? '0; sp = ' : '') + 'STACKTOP';
     if (initial > 0) ret += '; STACKTOP = (STACKTOP + ' + initial + ')|0';
     if (USE_TYPED_ARRAYS == 2) {
       assert(initial % Runtime.STACK_ALIGN == 0);
       if (ASSERTIONS && Runtime.STACK_ALIGN == 4) {
-        ret += '; assert(' + asmCoercion('!(STACKTOP&3)', 'i32') + ')';
+        ret += '; (assert(' + asmCoercion('!(STACKTOP&3)', 'i32') + ')|0)';
       }
     }
     if (ASSERTIONS) {
-      ret += '; assert(' + asmCoercion('(STACKTOP|0) < (STACK_MAX|0)', 'i32') + ')';
+      ret += '; (assert(' + asmCoercion('(STACKTOP|0) < (STACK_MAX|0)', 'i32') + ')|0)';
     }
     if (false) {
-      ret += '; _memset(' + asmCoercion('__stackBase__', 'i32') + ', 0, ' + initial + ')';
+      ret += '; _memset(' + asmCoercion('sp', 'i32') + ', 0, ' + initial + ')';
     }
     return ret;
   },
@@ -53,9 +53,9 @@ var RuntimeGenerator = {
     if (initial === 0 && SKIP_STACK_IN_SMALL && !force) return '';
     var ret = '';
     if (SAFE_HEAP) {
-      ret += 'var i = __stackBase__; while ((i|0) < (STACKTOP|0)) { SAFE_HEAP_CLEAR(i|0); i = (i+1)|0 }';
+      ret += 'var i = sp; while ((i|0) < (STACKTOP|0)) { SAFE_HEAP_CLEAR(i|0); i = (i+1)|0 }';
     }
-    return ret += 'STACKTOP = __stackBase__';
+    return ret += 'STACKTOP = sp';
   },
 
   // An allocation that cannot normally be free'd (except through sbrk, which once
@@ -201,14 +201,24 @@ var Runtime = {
     type.alignSize = 0;
     var diffs = [];
     var prev = -1;
+    var index = 0;
     type.flatIndexes = type.fields.map(function(field) {
+      index++;
       var size, alignSize;
       if (Runtime.isNumberType(field) || Runtime.isPointerType(field)) {
         size = Runtime.getNativeTypeSize(field); // pack char; char; in structs, also char[X]s.
         alignSize = Runtime.getAlignSize(field, size);
       } else if (Runtime.isStructType(field)) {
-        size = Types.types[field].flatSize;
-        alignSize = Runtime.getAlignSize(null, Types.types[field].alignSize);
+        if (field[1] === '0') {
+          // this is [0 x something]. When inside another structure like here, it must be at the end,
+          // and it adds no size
+          // XXX this happens in java-nbody for example... assert(index === type.fields.length, 'zero-length in the middle!');
+          size = 0;
+          alignSize = type.alignSize || QUANTUM_SIZE;
+        } else {
+          size = Types.types[field].flatSize;
+          alignSize = Runtime.getAlignSize(null, Types.types[field].alignSize);
+        }
       } else if (field[0] == 'b') {
         // bN, large number field, like a [N x i8]
         size = field.substr(1)|0;

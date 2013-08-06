@@ -39,7 +39,7 @@ TODO:        You can also provide .crn files yourself, pre-crunched. With this o
              to dds files in the browser, exactly the same as if this tool compressed them.
 '''
 
-import os, sys, shutil, random, uuid
+import os, sys, shutil, random, uuid, ctypes
 
 import shared
 from shared import Compression, execute, suffix, unsuffixed
@@ -49,6 +49,8 @@ if len(sys.argv) == 1:
   print '''Usage: file_packager.py TARGET [--preload A...] [--embed B...] [--compress COMPRESSION_DATA] [--pre-run] [--crunch[=X]] [--js-output=OUTPUT.js] [--no-force] [--use-preload-cache]
 See the source for more details.'''
   sys.exit(0)
+
+DEBUG = os.environ.get('EMCC_DEBUG')
 
 data_target = sys.argv[1]
 
@@ -112,16 +114,18 @@ for arg in sys.argv[1:]:
     in_preload = False
     in_embed = False
     in_compress = 0
-  elif in_preload:
-    if os.path.isfile(arg) or os.path.isdir(arg):
-      data_files.append({ 'name': arg, 'mode': 'preload' })
+  elif in_preload or in_embed:
+    mode = 'preload'
+    if in_embed:
+      mode = 'embed'
+    if '@' in arg:
+      srcpath, dstpath = arg.split('@') # User is specifying destination filename explicitly.
+    else:
+      srcpath = dstpath = arg # Use source path as destination path.
+    if os.path.isfile(srcpath) or os.path.isdir(srcpath):
+      data_files.append({ 'srcpath': srcpath, 'dstpath': dstpath, 'mode': mode })
     else:
       print >> sys.stderr, 'Warning: ' + arg + ' does not exist, ignoring.'
-  elif in_embed:
-    if os.path.isfile(arg) or os.path.isdir(arg):
-      data_files.append({ 'name': arg, 'mode': 'embed' })
-    else:
-      print >> sys.stderr, 'Warning:' + arg + ' does not exist, ignoring.'
   elif in_compress:
     if in_compress == 1:
       Compression.encoder = arg
@@ -146,21 +150,75 @@ function assert(check, msg) {
 }
 '''
 
+# Win32 code to test whether the given file has the hidden property set.
+def has_hidden_attribute(filepath):
+  if sys.platform != 'win32':
+    return False
+    
+  try:
+    attrs = ctypes.windll.kernel32.GetFileAttributesW(unicode(filepath))
+    assert attrs != -1
+    result = bool(attrs & 2)
+  except (AttributeError, AssertionError):
+    result = False
+  return result
+
+# The packager should never preload/embed any directories that have a component starting with '.' in them,
+# or if the file is hidden (Win32). Note that this filter ONLY applies to directories. Explicitly specified single files
+# are always preloaded/embedded, even if they start with a '.'.
+def should_ignore(filename):
+  if has_hidden_attribute(filename):
+    return True
+    
+  components = filename.replace('\\\\', '/').replace('\\', '/').split('/')
+  for c in components:
+    if c.startswith('.') and c != '.' and c != '..':
+      return True
+  return False
+
 # Expand directories into individual files
-def add(mode, dirname, names):
+def add(arg, dirname, names):
+  # rootpathsrc: The path name of the root directory on the local FS we are adding to emscripten virtual FS.
+  # rootpathdst: The name we want to make the source path available on the emscripten virtual FS.
+  mode, rootpathsrc, rootpathdst = arg
   for name in names:
     fullname = os.path.join(dirname, name)
     if not os.path.isdir(fullname):
-      data_files.append({ 'name': fullname, 'mode': mode })
+      if should_ignore(fullname):
+        if DEBUG:
+          print >> sys.stderr, 'Skipping hidden file "' + fullname + '" from inclusion in the emscripten virtual file system.'
+      else:
+        dstpath = os.path.join(rootpathdst, os.path.relpath(fullname, rootpathsrc)) # Convert source filename relative to root directory of target FS.
+        data_files.append({ 'srcpath': fullname, 'dstpath': dstpath, 'mode': mode })
 
 for file_ in data_files:
-  if os.path.isdir(file_['name']):
-    os.path.walk(file_['name'], add, file_['mode'])
-data_files = filter(lambda file_: not os.path.isdir(file_['name']), data_files)
+  if os.path.isdir(file_['srcpath']):
+    os.path.walk(file_['srcpath'], add, [file_['mode'], file_['srcpath'], file_['dstpath']])
+data_files = filter(lambda file_: not os.path.isdir(file_['srcpath']), data_files)
+
+# Absolutize paths, and check that they make sense
+curr_abspath = os.path.abspath(os.getcwd())
+for file_ in data_files:
+  if file_['srcpath'] == file_['dstpath']:
+    # This file was not defined with src@dst, so we inferred the destination from the source. In that case,
+    # we require that the destination not be under the current location
+    path = file_['dstpath']
+    abspath = os.path.abspath(path)
+    if DEBUG: print >> sys.stderr, path, abspath, curr_abspath
+    if not abspath.startswith(curr_abspath):
+      print >> sys.stderr, 'Error: Embedding "%s" which is below the current directory. This is invalid since the current directory becomes the root that the generated code will see' % path
+      sys.exit(1)
+    file_['dstpath'] = abspath[len(curr_abspath)+1:]
+    if os.path.isabs(path):
+      print >> sys.stderr, 'Warning: Embedding an absolute file/directory name "' + path + '" to the virtual filesystem. The file will be made available in the relative path "' + file_['dstpath'] + '". You can use the explicit syntax --preload-file srcpath@dstpath to explicitly specify the target location the absolute source path should be directed to.'
 
 for file_ in data_files:
-  file_['name'] = file_['name'].replace(os.path.sep, '/') # name in the filesystem, native and emulated
-  file_['localname'] = file_['name'] # name to actually load from local filesystem, after transformations
+  file_['dstpath'] = file_['dstpath'].replace(os.path.sep, '/') # name in the filesystem, native and emulated
+  if file_['dstpath'].endswith('/'): # If user has submitted a directory name as the destination but omitted the destination filename, use the filename from source file
+    file_['dstpath'] = file_['dstpath'] + os.path.basename(file_['srcpath'])
+  if file_['dstpath'].startswith('./'): file_['dstpath'] = file_['dstpath'][2:] # remove redundant ./ prefix
+  if DEBUG:
+    print >> sys.stderr, 'Packaging file "' + file_['srcpath'] + '" to VFS in path "' + file_['dstpath'] + '".'
 
 # Remove duplicates (can occur naively, for example preload dir/, preload dir/subdir/)
 seen = {}
@@ -168,7 +226,7 @@ def was_seen(name):
   if seen.get(name): return True
   seen[name] = 1
   return False
-data_files = filter(lambda file_: not was_seen(file_['name']), data_files)
+data_files = filter(lambda file_: not was_seen(file_['dstpath']), data_files)
 
 if AV_WORKAROUND:
   random.shuffle(data_files)
@@ -192,7 +250,7 @@ if crunch:
     function requestDecrunch(filename, data, callback) {
       decrunchWorker.postMessage({
         filename: filename,
-        data: data,
+        data: new Uint8Array(data),
         callbackID: decrunchCallbacks.length
       });
       decrunchCallbacks.push(callback);
@@ -200,20 +258,24 @@ if crunch:
 '''
 
   for file_ in data_files:
-    if file_['name'].endswith(CRUNCH_INPUT_SUFFIX):
-      # Do not crunch if crunched version exists and is more recent than dds source
-      crunch_name = unsuffixed(file_['name']) + CRUNCH_OUTPUT_SUFFIX
-      file_['localname'] = crunch_name
+    if file_['dstpath'].endswith(CRUNCH_INPUT_SUFFIX):
+      src_dds_name = file_['srcpath']
+      src_crunch_name = unsuffixed(src_dds_name) + CRUNCH_OUTPUT_SUFFIX
+
+      # Preload/embed the .crn version instead of the .dds version, but use the .dds suffix for the target file in the virtual FS.
+      file_['srcpath'] = src_crunch_name
+
       try:
-        crunch_time = os.stat(crunch_name).st_mtime
-        dds_time = os.stat(file_['name']).st_mtime
+        # Do not crunch if crunched version exists and is more recent than dds source
+        crunch_time = os.stat(src_crunch_name).st_mtime
+        dds_time = os.stat(src_dds_name).st_mtime
         if dds_time < crunch_time: continue
       except:
         pass # if one of them does not exist, continue on
 
       # guess at format. this lets us tell crunch to not try to be clever and use odd formats like DXT5_AGBR
       try:
-        format = Popen(['file', file_['name']], stdout=PIPE).communicate()[0]
+        format = Popen(['file', file_['srcpath']], stdout=PIPE).communicate()[0]
         if 'DXT5' in format:
           format = ['-dxt5']
         elif 'DXT1' in format:
@@ -222,23 +284,22 @@ if crunch:
           raise Exception('unknown format')
       except:
         format = []
-      Popen([CRUNCH, '-file', file_['name'], '-quality', crunch] + format, stdout=sys.stderr).communicate()
+      Popen([CRUNCH, '-outsamedir', '-file', src_dds_name, '-quality', crunch] + format, stdout=sys.stderr).communicate()
       #if not os.path.exists(os.path.basename(crunch_name)):
       #  print >> sys.stderr, 'Failed to crunch, perhaps a weird dxt format? Looking for a source PNG for the DDS'
-      #  Popen([CRUNCH, '-file', unsuffixed(file_['name']) + '.png', '-quality', crunch] + format, stdout=sys.stderr).communicate()
-      assert os.path.exists(os.path.basename(crunch_name)), 'crunch failed to generate output'
-      shutil.move(os.path.basename(crunch_name), crunch_name) # crunch places files in the current dir
+      #  Popen([CRUNCH, '-file', unsuffixed(file_['srcpath']) + '.png', '-quality', crunch] + format, stdout=sys.stderr).communicate()
+      assert os.path.exists(src_crunch_name), 'crunch failed to generate output'
       # prepend the dds header
-      crunched = open(crunch_name, 'rb').read()
-      c = open(crunch_name, 'wb')
-      c.write(open(file_['name'], 'rb').read()[:DDS_HEADER_SIZE])
+      crunched = open(src_crunch_name, 'rb').read()
+      c = open(src_crunch_name, 'wb')
+      c.write(open(src_dds_name, 'rb').read()[:DDS_HEADER_SIZE])
       c.write(crunched)
       c.close()
 
 # Set up folders
 partial_dirs = []
 for file_ in data_files:
-  dirname = os.path.dirname(file_['name'])
+  dirname = os.path.dirname(file_['dstpath'])
   dirname = dirname.lstrip('/') # absolute paths start with '/', remove that
   if dirname != '':
     parts = dirname.split('/')
@@ -254,10 +315,10 @@ if has_preloaded:
   start = 0
   for file_ in data_files:
     file_['data_start'] = start
-    curr = open(file_['localname'], 'rb').read()
+    curr = open(file_['srcpath'], 'rb').read()
     file_['data_end'] = start + len(curr)
     if AV_WORKAROUND: curr += '\x00'
-    #print >> sys.stderr, 'bundling', file_['name'], file_['localname'], file_['data_start'], file_['data_end']
+    #print >> sys.stderr, 'bundling', file_['srcpath'], file_['dstpath'], file_['data_start'], file_['data_end']
     start += len(curr)
     data.write(curr)
   data.close()
@@ -279,19 +340,22 @@ if has_preloaded:
 
 counter = 0
 for file_ in data_files:
-  filename = file_['name']
+  filename = file_['dstpath']
   if file_['mode'] == 'embed':
     # Embed
-    data = map(ord, open(file_['localname'], 'rb').read())
-    str_data = ''
-    chunk_size = 10240
-    while len(data) > 0:
-      chunk = data[:chunk_size]
-      data = data[chunk_size:]
-      if not str_data:
-        str_data = str(chunk)
-      else:
-        str_data += '.concat(' + str(chunk) + ')'
+    data = map(ord, open(file_['srcpath'], 'rb').read())
+    if not data:
+      str_data = '[]'
+    else:
+      str_data = ''
+      chunk_size = 10240
+      while len(data) > 0:
+        chunk = data[:chunk_size]
+        data = data[chunk_size:]
+        if not str_data:
+          str_data = str(chunk)
+        else:
+          str_data += '.concat(' + str(chunk) + ')'
     code += '''Module['FS_createDataFile']('/%s', '%s', %s, true, true);\n''' % (os.path.dirname(filename), os.path.basename(filename), str_data)
   elif file_['mode'] == 'preload':
     # Preload
@@ -351,9 +415,12 @@ if has_preloaded:
     if file_['mode'] == 'preload':
       use_data += '''
         curr = DataRequest.prototype.requests['%s'];
-        curr.response = byteArray.subarray(%d,%d);
+        var data = byteArray.subarray(%d, %d);
+        var ptr = Module['_malloc'](%d);
+        Module['HEAPU8'].set(data, ptr);
+        curr.response = Module['HEAPU8'].subarray(ptr, ptr + %d);
         curr.onload();
-      ''' % (file_['name'], file_['data_start'], file_['data_end'])
+      ''' % (file_['dstpath'], file_['data_start'], file_['data_end'], file_['data_end'] - file_['data_start'], file_['data_end'] - file_['data_start'])
   use_data += "          Module['removeRunDependency']('datafile_%s');\n" % data_target
 
   if Compression.on:
@@ -372,7 +439,7 @@ if has_preloaded:
     }
     Module.expectedDataFileDownloads++;
 
-    var PACKAGE_PATH = window.encodeURIComponent(window.location.pathname.toString().substring(0, window.location.pathname.toString().lastIndexOf('/')) + '/');
+    var PACKAGE_PATH = window['encodeURIComponent'](window.location.pathname.toString().substring(0, window.location.pathname.toString().lastIndexOf('/')) + '/');
     var PACKAGE_NAME = '%s';
     var REMOTE_PACKAGE_NAME = '%s';
     var PACKAGE_UUID = '%s';
