@@ -230,6 +230,7 @@ function isFunctionDef(token, out) {
   if (nonPointing[0] != '(' || nonPointing.substr(-1) != ')')
     return false;
   if (nonPointing === '()') return true;
+  ensureTokenRecursed(token);
   if (!token.item) return false;
   var fail = false;
   var segments = splitTokenList(token.item.tokens);
@@ -326,6 +327,11 @@ function countNormalArgs(type, out, legalized) {
 
 function addIdent(token) {
   token.ident = token.text;
+  return token;
+}
+
+function ensureTokenRecursed(token) {
+  if (token.type && token.type !== '{' && !token.item) token.item = tokenize(removeAllPointing(token.text).substr(1, token.text.length-2));
   return token;
 }
 
@@ -618,13 +624,13 @@ function parseLLVMFunctionCall(segment) {
   segment = cleanSegment(segment);
   // Remove additional modifiers
   var variant = null;
-  if (!segment[2] || !segment[2].item) {
+  if (!segment[2] || !segment[2].type) {
     variant = segment.splice(2, 1)[0];
     if (variant && variant.text) variant = variant.text; // needed for mathops
   }
   assertTrue(['inreg', 'byval'].indexOf(segment[1].text) == -1);
   assert(segment[1].text in PARSABLE_LLVM_FUNCTIONS);
-  while (!segment[2].item) {
+  while (!segment[2].type) {
     segment.splice(2, 1); // Remove modifiers
     if (!segment[2]) throw 'Invalid segment!';
   }
@@ -633,7 +639,7 @@ function parseLLVMFunctionCall(segment) {
   if (type === '?') {
     if (intertype === 'getelementptr') {
       type = '*'; // a pointer, we can easily say, this is
-    } else if (segment[2].item.tokens.slice(-2)[0].text === 'to') {
+    } else if (ensureTokenRecursed(segment[2]).item.tokens.slice(-2)[0].text === 'to') {
       type = segment[2].item.tokens.slice(-1)[0].text;
     }
   }
@@ -641,7 +647,7 @@ function parseLLVMFunctionCall(segment) {
     intertype: intertype,
     variant: variant,
     type: type,
-    params: parseParamTokens(segment[2].item.tokens)
+    params: parseParamTokens(ensureTokenRecursed(segment[2]).item.tokens)
   };
   Types.needAnalysis[ret.type] = 0;
   ret.ident = toNiceIdent(ret.params[0].ident || 'NOIDENT');
@@ -2496,7 +2502,7 @@ function walkAndModifyInterdata(item, pre) {
 }
 
 function parseBlockAddress(segment) {
-  return { intertype: 'blockaddress', func: toNiceIdent(segment[2].item.tokens[0].text), label: toNiceIdent(segment[2].item.tokens[2].text), type: 'i32' };
+  return { intertype: 'blockaddress', func: toNiceIdent(ensureTokenRecursed(segment[2]).item.tokens[0].text), label: toNiceIdent(ensureTokenRecursed(segment[2]).item.tokens[2].text), type: 'i32' };
 }
 
 function finalizeBlockAddress(param) {
