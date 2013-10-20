@@ -775,7 +775,7 @@ function JSify(data, functionsOnly, givenFunctions) {
         //Relooper.setDebug(1);
         Relooper.init();
 
-        Relooper.setFlags(ASM_JS, 1);
+        Relooper.setFlags(ASM_JS, 0);//RUNNING_JS_OPTS); // RUNNING_JS_OPTS implies high optimization level, so use maximal relooper opts
 
         var blockMap = {};
         // add blocks

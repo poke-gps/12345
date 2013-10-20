@@ -933,6 +933,8 @@ void Relooper::Calculate(Block *Entry) {
   Root = Analyzer(this).Process(AllBlocks, Entries, NULL);
   assert(Root);
 
+  if (OptimizationLevel == 0) return;
+
   // Post optimizations
 
   struct PostOptimizer {
