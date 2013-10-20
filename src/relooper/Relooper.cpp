@@ -63,6 +63,7 @@ void PutIndented(const char *String) {
 }
 
 static int AsmJS = 0;
+static int OptimizationLevel = 1;
 
 // Indenter
 
@@ -1136,8 +1137,9 @@ void Relooper::MakeOutputBuffer(int Size) {
   OutputBufferSize = Size;
 }
 
-void Relooper::SetAsmJSMode(int On) {
-  AsmJS = On;
+void Relooper::SetFlags(bool AsmJSInit, int OptimizationLevelInit) {
+  AsmJS = AsmJSInit;
+  OptimizationLevel = OptimizationLevelInit;
 }
 
 #if DEBUG
@@ -1205,8 +1207,8 @@ void rl_make_output_buffer(int size) {
   Relooper::SetOutputBuffer((char*)malloc(size), size);
 }
 
-void rl_set_asm_js_mode(int on) {
-  Relooper::SetAsmJSMode(on);
+void rl_set_flags(int asm_js, int optimization_level) {
+  Relooper::SetFlags(asm_js, optimization_level);
 }
 
 void *rl_new_block(const char *text, const char *branch_var) {

@@ -202,8 +202,8 @@ struct Relooper {
   // Creates an output buffer. Must call this or SetOutputBuffer.
   static void MakeOutputBuffer(int Size);
 
-  // Sets asm.js mode on or off (default is off)
-  static void SetAsmJSMode(int On);
+  // Sets asm.js mode on or off (default is off), and optimization level (default is 1, the max)
+  static void SetFlags(bool AsmJSInit=false, int OptimizationLevelInit=1);
 };
 
 typedef std::map<Block*, BlockSet> BlockBlockSetMap;
@@ -235,7 +235,7 @@ extern "C" {
 
 RELOOPERDLL_API void  rl_set_output_buffer(char *buffer, int size);
 RELOOPERDLL_API void  rl_make_output_buffer(int size);
-RELOOPERDLL_API void  rl_set_asm_js_mode(int on);
+RELOOPERDLL_API void  rl_set_flags(int asm_js, int optimization_level);
 RELOOPERDLL_API void *rl_new_block(const char *text, const char *branch_var);
 RELOOPERDLL_API void  rl_delete_block(void *block);
 RELOOPERDLL_API void  rl_block_add_branch_to(void *from, void *to, const char *condition, const char *code);
