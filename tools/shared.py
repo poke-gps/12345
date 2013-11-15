@@ -255,7 +255,7 @@ if EM_POPEN_WORKAROUND and os.name == 'nt':
 
 # Expectations
 
-EXPECTED_LLVM_VERSION = (3,2)
+EXPECTED_LLVM_VERSION = (3,3)
 
 def check_clang_version():
   expected = 'clang version ' + '.'.join(map(str, EXPECTED_LLVM_VERSION))
