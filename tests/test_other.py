@@ -2065,6 +2065,6 @@ int main()
 
   def test_simd(self):
     self.clear()
-    Popen([PYTHON, EMCC, path_from_root('tests', 'linpack.c'), '-O2', '-DSP', '--llvm-opts', '''['-O3', '-vectorize', '-vectorize-loops', '-bb-vectorize-vector-bits=128', '-force-vector-width=4']''']).communicate()
+    Popen([PYTHON, EMCC, path_from_root('tests', 'linpack.c'), '-O2', '-DSP', '--llvm-opts', '''['-O3', '-vectorize-loops', '-vectorize-slp', '-vectorize-slp-aggressive']''']).communicate()
     self.assertContained('Unrolled Single  Precision', run_js('a.out.js'))
 
