@@ -1697,7 +1697,7 @@ class JS:
     i = 0
     start = 0
     while 1:
-      if i - start >= maxx or (i > start and i == l):
+      if (i - start >= maxx or (i > start and i == l)) and i % 4 == 0:
         #print >> sys.stderr, 'new', start, i-start
         ret.append((start, contents[start:i]))
         start = i
@@ -1710,6 +1710,8 @@ class JS:
         while j < l and contents[j] == '0': j += 1
         if j-i > maxx/10 or j-start >= maxx:
           #print >> sys.stderr, 'skip', start, i-start, j-start
+          while i % 4 != 0: i += 1
+          assert i < j
           ret.append((start, contents[start:i])) # skip over the zeros starting at i and ending at j
           start = j
         i = j
@@ -1725,8 +1727,14 @@ class JS:
       State.first = False
       def gen_init(init):
         offset, contents = init
-        return '/* memory initializer */ allocate([%s], "i8", ALLOC_NONE, Runtime.GLOBAL_BASE%s);' % (
-          ','.join(contents),
+        size = len(contents)
+        assert size % 4 == 0
+        packed = []
+        for i in range(size>>2):
+          b = i<<2
+          packed.append(str(int(contents[b]) + (int(contents[b+1]) << 8) + (int(contents[b+2]) << 16) + (int(contents[b+3]) << 24)))
+        return '/* memory initializer */ allocate([%s], "i32", ALLOC_NONE, Runtime.GLOBAL_BASE%s);' % (
+          ','.join(packed),
           '' if offset == 0 else ('+%d' % offset)
         )
       return '\n'.join(map(gen_init, inits))
@@ -1740,7 +1748,6 @@ class JS:
     init = inits[0]
     offset, contents = init
     assert offset == 0 # offset 0, singleton
-    if len(contents) <= JS.INITIALIZER_CHUNK_SIZE: return None
     return JS.replace_initializers(src, JS.split_initializer(contents))
 
 # Compression of code and data for smaller downloads

@@ -526,6 +526,13 @@ function allocate(slab, types, allocator, ptr) {
       HEAPU8.set(new Uint8Array(slab), ret);
     }
     return ret;
+  } else if (singleType === 'i32') {
+    if (slab.subarray || slab.slice) {
+      HEAPU32.set(slab, ret>>2);
+    } else {
+      HEAPU32.set(new Uint32Array(slab), ret>>2);
+    }
+    return ret;
   }
 #endif
 
