@@ -49,7 +49,7 @@ unsigned char *getLocalName(int i) {
 }
 
 // parses a block of code, until we hit a control flow change (branch, return)
-void parse_block(unsigned char *&code, asmType *types) {
+void parse_block(unsigned char *&pc, asmType *types) {
   PARSE_BLOCK;
 }
 
