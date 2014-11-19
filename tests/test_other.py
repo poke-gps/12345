@@ -3529,7 +3529,7 @@ main()
     ''')
     Popen([PYTHON, EMCC, 'src.cpp', '-O2', '-s', 'SAFE_HEAP=1']).communicate()
     assert os.path.exists('a.out.js') # build should succeed
-    self.assertContained('segmentation fault loading 4 bytes from address 0', run_js('a.out.js', assert_returncode=None, stderr=PIPE)) # program should segfault
+    self.assertContained(('trap!', 'segmentation fault loading 4 bytes from address 0'), run_js('a.out.js', assert_returncode=None, stderr=PIPE)) # program should segfault
 
   def test_only_force_stdlibs(self):
     def test(name):
