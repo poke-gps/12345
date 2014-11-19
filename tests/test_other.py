@@ -2612,7 +2612,7 @@ int main(int argc, char **argv) {
         exit = 1-no_exit
         assert 'coming around' in output
         assert ('going away' in output) == exit, 'destructors should not run if no exit'
-        assert ('_ZN5WasteILi2EED1Ev' in src) == exit, 'destructors should not appear if no exit'
+        assert ('_ZN5WasteILi2EED' in src) == exit, 'destructors should not appear if no exit'
         assert ('atexit(' in src) == exit, 'atexit should not appear or be called'
 
   def test_os_oz(self):
