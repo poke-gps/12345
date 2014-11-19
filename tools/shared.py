@@ -1385,8 +1385,12 @@ class Building:
     if type(opts) is int:
       opts = Building.pick_llvm_opts(opts)
     #opts += ['-debug-pass=Arguments']
-    if get_clang_version() == '3.4' and not Settings.SIMD:
-      opts += ['-disable-vectorize']
+    if get_clang_version() >= '3.4':
+      if not Settings.SIMD:
+        opts += ['-disable-vectorize']
+      else:
+        opts += ['-bb-vectorize-vector-bits=128', '-force-vector-width=4']
+
     logging.debug('emcc: LLVM opts: ' + ' '.join(opts))
     target = out or (filename + '.opt.bc')
     output = Popen([LLVM_OPT, filename] + opts + ['-o', target], stdout=PIPE).communicate()[0]
