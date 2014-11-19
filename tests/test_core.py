@@ -5746,7 +5746,7 @@ def process(filename):
           '18.cpp', '15.c', '21.c'
         ]: continue # works only in fastcomp
         if x == 'lto' and self.run_name == 'default' and os.path.basename(name) in [
-          '19.c'
+          '19.c', '18.cpp'
         ]: continue # LLVM LTO bug
 
         print name
