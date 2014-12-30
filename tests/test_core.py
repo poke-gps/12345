@@ -7300,7 +7300,6 @@ asm3i = make_run("asm3i", compiler=CLANG, emcc_args=["-O3", '-s', 'EMTERPRETIFY=
 
 # Legacy test modes - 
 asm2nn = make_run("asm2nn", compiler=CLANG, emcc_args=["-O2"], env={"EMCC_NATIVE_OPTIMIZER": "0"})
-slow2 = make_run("slow2", compiler=CLANG, emcc_args=["-O2", "-s", "ASM_JS=0"], env={"EMCC_FAST_COMPILER": "0"})
 
 del T # T is just a shape for the specific subclasses, we don't test it itself
 
