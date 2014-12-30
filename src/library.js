@@ -4291,6 +4291,7 @@ LibraryManager.library = {
   // llvm-nacl
 
   llvm_nacl_atomic_store_i32__inline: true,
+  llvm_nacl_atomic_cmpxchg_i32__inline: true,
 
   // gnu atomics
 
