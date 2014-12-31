@@ -5823,7 +5823,8 @@ def process(filename):
           '18.cpp', '15.c', '21.c', '22.c'
         ]: continue # works only in fastcomp
         if x == 'lto' and self.run_name == 'default' and os.path.basename(name) in [
-          '19.c', '18.cpp'
+          '19.c', '18.cpp',
+          '8.c' # pnacl legalization issue, see https://code.google.com/p/nativeclient/issues/detail?id=4027
         ]: continue # LLVM LTO bug
         if x == 'lto' and os.path.basename(name) in [
           '21.c'
