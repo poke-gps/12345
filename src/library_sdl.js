@@ -36,6 +36,7 @@ var LibrarySDL = {
     fonts: [null],
 
     // The currently preloaded audio elements ready to be played
+    webAudioAvailable: false,
     audios: [null],
     rwops: [null],
     // The currently playing audio element.  There's only one music track.
@@ -2148,7 +2149,7 @@ var LibrarySDL = {
 
   Mix_OpenAudio__deps: ['emscripten_audio_init', 'Mix_AllocateChannels'],
   Mix_OpenAudio: function(frequency, format, channels, chunksize) {
-    _emscripten_audio_init();
+    SDL.webAudioAvailable = _emscripten_audio_init() == {{{ cDefine('EMSCRIPTEN_RESULT_SUCCESS') }}};
     _Mix_AllocateChannels(32);
     // Just record the values for a later call to Mix_QuickLoad_RAW
     SDL.mixerFrequency = frequency;
@@ -2243,7 +2244,7 @@ var LibrarySDL = {
     // In particular, see https://bugzilla.mozilla.org/show_bug.cgi?id=654787 and ?id=1012801 for tradeoffs.
     var canPlayWithWebAudio = Module['SDL_canPlayWithWebAudio'] === undefined || Module['SDL_canPlayWithWebAudio'](filename, arrayBuffer);
 
-    if (bytes !== undefined && SDL.webAudioAvailable() && canPlayWithWebAudio) {
+    if (bytes !== undefined && SDL.webAudioAvailable && canPlayWithWebAudio) {
       audio = undefined;
       webAudio = {};
       // The audio decoding process is asynchronous, which gives trouble if user code plays the audio data back immediately
@@ -2280,7 +2281,7 @@ var LibrarySDL = {
       buffer[i] = ({{{ makeGetValue('mem', 'i*2', 'i16', 0, 0) }}}) / 0x8000; // hardcoded 16-bit audio, signed (TODO: reSign if not ta2?)
     }
 
-    if (SDL.webAudioAvailable()) {
+    if (SDL.webAudioAvailable) {
       webAudio = {};
       webAudio.instance = _emscripten_audio_load_pcm_raw(1, numSamples, SDL.mixerFrequency, buffer);
     } else {
@@ -2394,7 +2395,7 @@ var LibrarySDL = {
   },
 
   Mix_VolumeMusic: function(volume) {
-    if (SDL.webAudioAvailable()) {
+    if (SDL.webAudioAvailable) {
       var ret = SDL.mixerMusicChannel.volume;
       SDL.mixerMusicChannel.volume = volume;
       _emscripten_audio_set_volume(SDL.mixerMusicChannel.instance, volume);
