@@ -1153,15 +1153,13 @@ var LibrarySDL = {
     // Mixer
 
     allocateChannels: function(num) {
-      if (!SDL.mixerCallback) {
-        SDL.mixerCallback = Runtime.addFunction(function(i) {
-          if (i >= 0) {
-            if (SDL.channelFinished) Runtime.getFuncWrapper(SDL.channelFinished, 'vi')(i);
-          } else {
-            // music
-            if (SDL.hookMusicFinished) Runtime.getFuncWrapper(SDL.hookMusicFinished, 'v')();
-          }
-        });
+      function SDL_mixerCallback(i) {
+        if (i >= 0) {
+          if (SDL.channelFinished) Runtime.getFuncWrapper(SDL.channelFinished, 'vi')(i);
+        } else {
+          // music
+          if (SDL.hookMusicFinished) Runtime.getFuncWrapper(SDL.hookMusicFinished, 'v')();
+        }
       }
 
       for (i = 0; i < SDL.mixerChannels.length; i++) {
@@ -1170,14 +1168,14 @@ var LibrarySDL = {
       SDL.mixerChannels.length = 0;
       for (i = 0; i < num; i++) {
         SDL.mixerChannels.push({
-          instance: _emscripten_audio_create_channel(SDL.mixerCallback, i),
+          instance: _emscripten_audio_create_channel(SDL_mixerCallback, i),
           volume: -1
         });
       }
 
       // Also allocate a music channel
       if (!SDL.mixerMusicChannel) {
-        SDL.mixerMusicChannel = _emscripten_audio_create_channel(SDL.mixerCallback, -1);
+        SDL.mixerMusicChannel = _emscripten_audio_create_channel(SDL_mixerCallback, -1);
       }
     },
   },
