@@ -1164,7 +1164,7 @@ var LibrarySDL = {
         });
       }
 
-      for (i = 0; i < num; i++) {
+      for (i = 0; i < SDL.mixerChannels.length; i++) {
         _emscripten_audio_free(SDL.mixerChannels[i].instance);
       }
       SDL.mixerChannels.length = 0;
