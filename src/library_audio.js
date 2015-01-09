@@ -18,21 +18,28 @@ var LibraryAudio = {
     return {{{ cDefine('EMSCRIPTEN_RESULT_SUCCESS') }}};
   },
 
-  emscripten_audio_load_pcm: function(channels, length, sampleRate, ptr) {
+  // internal method that receives a raw typed array
+  emscripten_audio_load_pcm_raw: function(channels, length, sampleRate, raw) {
     if (!HTML5Audio.enabled) return 0;
     var sound = {
       buffer: HTML5Audio.audioContext.createBuffer(channels, length, sampleRate),
       error: false
     };
     for (var i = 0; i < channels; i++) {
-      var offs = (ptr>>2) + length * i;
-      sound.buffer.copyToChannel(HEAPF32.subarray(offs, offs + length), i, 0);
+      var offs = length * i;
+      sound.buffer.copyToChannel(raw.subarray(offs, offs + length), i, 0);
     }
     var instance = HTML5Audio.audioInstances.push(sound) - 1;
     return instance;
   },
 
-  emscripten_audio_load: function(ptr, length) {
+  emscripten_audio_load_pcm__deps: ['emscripten_audio_load_pcm_raw'],
+  emscripten_audio_load_pcm: function(channels, length, sampleRate, ptr) {
+    return emscripten_audio_load_pcm_raw(channels, length, sampleRate, HEAPF32.subarray(ptr >> 2));
+  },
+
+  // internal method that receives a raw typed array
+  emscripten_audio_load_raw: function(raw) {
     if (!HTML5Audio.enabled) return 0;
     var sound = {
       buffer: null,
@@ -40,7 +47,7 @@ var LibraryAudio = {
     };
     var instance = HTML5Audio.audioInstances.push(sound) - 1;
     HTML5Audio.audioContext.decodeAudioData(
-      HEAPU8.buffer.slice(ptr, ptr+length),
+      raw,
       function(buffer) {
         sound.buffer = buffer;
       },
@@ -50,6 +57,11 @@ var LibraryAudio = {
       }
     );
     return instance;
+  },
+
+  emscripten_audio_load__deps: ['emscripten_audio_load_raw'],
+  emscripten_audio_load: function(ptr, length) {
+    return _emscripten_audio_load_raw(HEAPU8.buffer.slice(ptr, ptr+length));
   },
 
   emscripten_audio_free: function(instance) {
