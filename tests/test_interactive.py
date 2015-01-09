@@ -29,7 +29,7 @@ class interactive(BrowserCore):
     self.btest(path_from_root('tests', 'test_sdl_mousewheel.c'), expected='0')
 
   def test_sdl_touch(self):
-    self.btest(path_from_root('tests', 'sdl_touch.c'), args=['-O2', '-g1', '--closure', '1'], expected='0')
+    self.btest(path_from_root('tests', 'sdl_touch.c'), args=['-O2', '-g1', '--closure', '0'], expected='0')
 
   def test_sdl_wm_togglefullscreen(self):
     self.btest('sdl_wm_togglefullscreen.c', expected='1', args=['-s', 'NO_EXIT_RUNTIME=1'])
@@ -43,7 +43,7 @@ class interactive(BrowserCore):
     open(os.path.join(self.get_dir(), 'sdl_audio.c'), 'w').write(self.with_report_result(open(path_from_root('tests', 'sdl_audio.c')).read()))
 
     # use closure to check for a possible bug with closure minifying away newer Audio() attributes
-    Popen([PYTHON, EMCC, '-O2', '--closure', '1', '--minify', '0', os.path.join(self.get_dir(), 'sdl_audio.c'), '--preload-file', 'sound.ogg', '--preload-file', 'sound2.wav', '--embed-file', 'the_entertainer.ogg', '--preload-file', 'noise.ogg', '--preload-file', 'bad.ogg', '-o', 'page.html', '-s', 'EXPORTED_FUNCTIONS=["_main", "_play", "_play2"]']).communicate()
+    Popen([PYTHON, EMCC, '-O2', '--closure', '0', '--minify', '0', os.path.join(self.get_dir(), 'sdl_audio.c'), '--preload-file', 'sound.ogg', '--preload-file', 'sound2.wav', '--embed-file', 'the_entertainer.ogg', '--preload-file', 'noise.ogg', '--preload-file', 'bad.ogg', '-o', 'page.html', '-s', 'EXPORTED_FUNCTIONS=["_main", "_play", "_play2"]']).communicate()
     self.run_browser('page.html', '', '/report_result?1')
 
   def test_sdl_audio_mix_channels(self):
@@ -67,21 +67,21 @@ class interactive(BrowserCore):
     open(os.path.join(self.get_dir(), 'sdl_audio_panning.c'), 'w').write(self.with_report_result(open(path_from_root('tests', 'sdl_audio_panning.c')).read()))
 
     # use closure to check for a possible bug with closure minifying away newer Audio() attributes
-    Popen([PYTHON, EMCC, '-O2', '--closure', '1', '--minify', '0', os.path.join(self.get_dir(), 'sdl_audio_panning.c'), '--preload-file', 'the_entertainer.wav', '-o', 'page.html', '-s', 'EXPORTED_FUNCTIONS=["_main", "_play"]']).communicate()
+    Popen([PYTHON, EMCC, '-O2', '--closure', '0', '--minify', '0', os.path.join(self.get_dir(), 'sdl_audio_panning.c'), '--preload-file', 'the_entertainer.wav', '-o', 'page.html', '-s', 'EXPORTED_FUNCTIONS=["_main", "_play"]']).communicate()
     self.run_browser('page.html', '', '/report_result?1')
 
   def test_sdl_audio_beeps(self):
     open(os.path.join(self.get_dir(), 'sdl_audio_beep.cpp'), 'w').write(self.with_report_result(open(path_from_root('tests', 'sdl_audio_beep.cpp')).read()))
 
     # use closure to check for a possible bug with closure minifying away newer Audio() attributes
-    Popen([PYTHON, EMCC, '-O2', '--closure', '1', '--minify', '0', os.path.join(self.get_dir(), 'sdl_audio_beep.cpp'), '-s', 'DISABLE_EXCEPTION_CATCHING=0', '-o', 'page.html']).communicate()
+    Popen([PYTHON, EMCC, '-O2', '--closure', '0', '--minify', '0', os.path.join(self.get_dir(), 'sdl_audio_beep.cpp'), '-s', 'DISABLE_EXCEPTION_CATCHING=0', '-o', 'page.html']).communicate()
     self.run_browser('page.html', '', '/report_result?1')
 
   def zzztest_sdl2_audio_beeps(self):
     open(os.path.join(self.get_dir(), 'sdl2_audio_beep.cpp'), 'w').write(self.with_report_result(open(path_from_root('tests', 'sdl2_audio_beep.cpp')).read()))
 
     # use closure to check for a possible bug with closure minifying away newer Audio() attributes
-    Popen([PYTHON, EMCC, '-O2', '--closure', '1', '--minify', '0', os.path.join(self.get_dir(), 'sdl2_audio_beep.cpp'), '-s', 'DISABLE_EXCEPTION_CATCHING=0', '-s', 'USE_SDL=2', '-o', 'page.html']).communicate()
+    Popen([PYTHON, EMCC, '-O2', '--closure', '0', '--minify', '0', os.path.join(self.get_dir(), 'sdl2_audio_beep.cpp'), '-s', 'DISABLE_EXCEPTION_CATCHING=0', '-s', 'USE_SDL=2', '-o', 'page.html']).communicate()
     self.run_browser('page.html', '', '/report_result?1')
 
   def test_openal_playback(self):
