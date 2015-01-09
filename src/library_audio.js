@@ -81,7 +81,13 @@ var LibraryAudio = {
         this.source.buffer = buffer;
         var chan = this;
         this.source.onended = function() {
-          if (callback) Runtime.dynCall('vi', callback, [userData]);
+          if (callback) {
+            if (typeof callback === 'number') {
+              Runtime.dynCall('vi', callback, [userData]);
+            } else {
+              callback(userData);
+            }
+          }
           // recreate channel for future use.
           chan.setup();
         };
