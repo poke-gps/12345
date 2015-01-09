@@ -1170,14 +1170,14 @@ var LibrarySDL = {
       SDL.mixerChannels.length = 0;
       for (i = 0; i < num; i++) {
         SDL.mixerChannels.push({
-          instance: _emscripten_audio_create_channel(SDL.mixerCallback, i)),
+          instance: _emscripten_audio_create_channel(SDL.mixerCallback, i),
           volume: -1
         });
       }
 
       // Also allocate a music channel
       if (!SDL.mixerMusicChannel) {
-        SDL.mixerMusicChannel = _emscripten_audio_create_channel(SDL.mixerCallback, -1));
+        SDL.mixerMusicChannel = _emscripten_audio_create_channel(SDL.mixerCallback, -1);
       }
     },
   },
