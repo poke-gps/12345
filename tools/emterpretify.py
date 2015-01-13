@@ -23,6 +23,18 @@ ASYNC = True
 
 ASSERTIONS = True
 
+def handle_arg(arg):
+  global ZERO, ASYNC, ASSERTIONS
+  if '=' in arg:
+    l, r = arg.split('=')
+    if l == 'ZERO': ZERO = int(r)
+    elif l == 'ASYNC': ASYNC = int(r)
+    elif l == 'ASSERTIONS': ASSERTIONS = int(r)
+    return False
+  return True
+
+sys.argv = filter(handle_arg, sys.argv)
+
 # consts
 
 BLACKLIST = set(['_malloc', '_free', '_memcpy', '_memmove', '_memset', 'copyTempDouble', 'copyTempFloat', '_strlen', 'stackAlloc', 'setThrew', 'stackRestore', 'setTempRet0', 'getTempRet0', 'stackSave', 'runPostSets', '_emscripten_autodebug_double', '_emscripten_autodebug_float', '_emscripten_autodebug_i8', '_emscripten_autodebug_i16', '_emscripten_autodebug_i32', '_emscripten_autodebug_i64', '_strncpy', '_strcpy', '_strcat', '_saveSetjmp', '_testSetjmp', '_emscripten_replace_memory', '_bitshift64Shl', '_bitshift64Ashr', '_bitshift64Lshr', 'setAsyncState', 'emtStackSave'])
@@ -640,7 +652,7 @@ if __name__ == '__main__':
   external_emterpreted_funcs = filter(lambda func: func in tabled_funcs or func in exported_funcs or func in reachable_funcs, emterpreted_funcs)
 
   # process functions, generating bytecode
-  shared.Building.js_optimizer(infile, ['emterpretify'], extra_info={ 'emterpretedFuncs': list(emterpreted_funcs), 'externalEmterpretedFuncs': list(external_emterpreted_funcs), 'opcodes': OPCODES, 'ropcodes': ROPCODES }, output_filename=temp, just_concat=True)
+  shared.Building.js_optimizer(infile, ['emterpretify'], extra_info={ 'emterpretedFuncs': list(emterpreted_funcs), 'externalEmterpretedFuncs': list(external_emterpreted_funcs), 'opcodes': OPCODES, 'ropcodes': ROPCODES, 'ASYNC': ASYNC }, output_filename=temp, just_concat=True)
 
   # load the module and modify it
   asm = asm_module.AsmModule(temp)

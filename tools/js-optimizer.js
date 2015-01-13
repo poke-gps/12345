@@ -6124,12 +6124,11 @@ function findUninitializedVars(func, asmData) {
 function emterpretify(ast) {
   emitAst = false;
 
-  var ASYNC = true;
-
   var EMTERPRETED_FUNCS = set(extraInfo.emterpretedFuncs);
   var EXTERNAL_EMTERPRETED_FUNCS = set(extraInfo.externalEmterpretedFuncs);
   var OPCODES = extraInfo.opcodes;
   var ROPCODES = extraInfo.ropcodes;
+  var ASYNC = extraInfo.ASYNC;
 
   var RELATIVE_BRANCHES = set('BR', 'BRT', 'BRF');
   var ABSOLUTE_BRANCHES = set('BRA', 'BRTA', 'BRFA');
