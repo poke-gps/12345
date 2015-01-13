@@ -6124,6 +6124,8 @@ function findUninitializedVars(func, asmData) {
 function emterpretify(ast) {
   emitAst = false;
 
+  var ASYNC = true;
+
   var EMTERPRETED_FUNCS = set(extraInfo.emterpretedFuncs);
   var EXTERNAL_EMTERPRETED_FUNCS = set(extraInfo.externalEmterpretedFuncs);
   var OPCODES = extraInfo.opcodes;
@@ -7429,7 +7431,7 @@ function emterpretify(ast) {
         func[3].push(srcToStat('while ((x | 0) < ' + stackBytes + ') { HEAP32[sp + x >> 2] = HEAP32[x >> 2] | 0; x = x + 4 | 0; }'));
       }
       // copy our arguments to our stack frame
-      var bump = 0; // we will assert in the emterpreter itself that we did not overflow the emtstack
+      var bump = ASYNC ? 8 : 0; // we will assert in the emterpreter itself that we did not overflow the emtstack
       func[2].forEach(function(arg) {
         var code;
         switch (asmData.params[arg]) {
