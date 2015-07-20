@@ -102,22 +102,6 @@ function assert(condition, text) {
 
 var globalScope = this;
 
-// Returns the C function with a specified identifier (for C++, you need to do manual name mangling)
-function getCFunc(ident) {
-  var func = Module['_' + ident]; // closure exported function
-  if (!func) {
-#if NO_DYNAMIC_EXECUTION == 0
-    try {
-      func = eval('_' + ident); // explicit lookup
-    } catch(e) {}
-#else
-    abort('NO_DYNAMIC_EXECUTION was set, cannot eval - ccall/cwrap are not functional');
-#endif
-  }
-  assert(func, 'Cannot call unknown function ' + ident + ' (perhaps LLVM optimizations or closure removed it?)');
-  return func;
-}
-
 var cwrap, ccall;
 (function(){
   var JSfuncs = {

@@ -269,7 +269,9 @@ var ASYNCIFY_WHITELIST = ['qsort',   // Functions in this list are never conside
                           '__fwritex', 
                           'MUSL_vfprintf']; 
 
-var EXPORTED_FS_METHODS = ['createFolder',         //Define FS module names. These become Module["FS_(module name)"] = FS_(module name)
+var EXPORTED_RUNTIME_METHODS = ['getCFunc'];       // These are exported, i.e.  Module["FS_(name)"] = FS_(name)
+
+var EXPORTED_FS_METHODS = ['createFolder',         // These are exported, i.e.  Module["FS_(name)"] = FS_(name)
                            'createPath',
                            'createDataFile',
                            'createPreloadedFile',
