@@ -16,27 +16,29 @@ var RuntimeLibrary = {
   },
 };
 
-var fixed = {};
-for (var i in RuntimeLibrary) {
-  fixed['$' + i] = RuntimeLibrary[i];
-  // fix deps too
-  var j = i.lastIndexOf('__');
-  if (j < 0) continue;
-  if (i.substr(j) !== '__deps') continue;
-  var o = RuntimeLibrary[i];
-  for (var k = 0; k < o.length; k++) {
-    var curr = o[k];
-    if (RuntimeLibrary[curr]) {
-      o[k] = '$' + curr;
+(function() {
+  var fixed = {};
+  for (var i in RuntimeLibrary) {
+    fixed['$' + i] = RuntimeLibrary[i];
+    // fix deps too
+    var j = i.lastIndexOf('__');
+    if (j < 0) continue;
+    if (i.substr(j) !== '__deps') continue;
+    var o = RuntimeLibrary[i];
+    for (var k = 0; k < o.length; k++) {
+      var curr = o[k];
+      if (RuntimeLibrary[curr]) {
+        o[k] = '$' + curr;
+      }
     }
   }
-}
 
-mergeInto(LibraryManager.library, fixed);
+  mergeInto(LibraryManager.library, fixed);
 
-for (var i = 0; i < EXPORTED_RUNTIME_METHODS.length; i++) {
-  EXPORTED_RUNTIME_METHODS[i] = '$' + EXPORTED_RUNTIME_METHODS[i];
-}
+  for (var i = 0; i < EXPORTED_RUNTIME_METHODS.length; i++) {
+    EXPORTED_RUNTIME_METHODS[i] = '$' + EXPORTED_RUNTIME_METHODS[i];
+  }
 
-DEFAULT_LIBRARY_FUNCS_TO_INCLUDE = DEFAULT_LIBRARY_FUNCS_TO_INCLUDE.concat(EXPORTED_RUNTIME_METHODS);
+  DEFAULT_LIBRARY_FUNCS_TO_INCLUDE = DEFAULT_LIBRARY_FUNCS_TO_INCLUDE.concat(EXPORTED_RUNTIME_METHODS);
+})();
 
