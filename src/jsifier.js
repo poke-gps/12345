@@ -70,6 +70,7 @@ function JSify(data, functionsOnly) {
       }
     } else {
       libFuncsToInclude = DEFAULT_LIBRARY_FUNCS_TO_INCLUDE;
+      libFuncsToInclude = libFuncsToInclude.concat(EXPORTED_RUNTIME_METHODS);
     }
     libFuncsToInclude.forEach(function(ident) {
       var finalName = '_' + ident;
@@ -219,6 +220,10 @@ function JSify(data, functionsOnly) {
         Functions.implementedFunctions[finalName] = sig;
         asmLibraryFunctions.push(contentText);
         contentText = ' ';
+        EXPORTED_FUNCTIONS[finalName] = 1;
+        Functions.libraryFunctions[finalName] = 2;
+      } else if (RuntimeLibrary[finalName]) {
+        // runtime library methods are exported, so normal JS can access them, and not exported to the asm module
         EXPORTED_FUNCTIONS[finalName] = 1;
         Functions.libraryFunctions[finalName] = 2;
       }

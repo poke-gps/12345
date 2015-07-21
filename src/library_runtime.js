@@ -1,4 +1,5 @@
-var RuntimeLibrary = {
+// Note no var - intentionally global
+RuntimeLibrary = {
   // Returns the C function with a specified identifier (for C++, you need to do manual name mangling)
   getCFunc: function(ident) {
     var func = Module['_' + ident]; // closure exported function
@@ -198,7 +199,5 @@ var RuntimeLibrary = {
   for (var i = 0; i < EXPORTED_RUNTIME_METHODS.length; i++) {
     EXPORTED_RUNTIME_METHODS[i] = '$' + EXPORTED_RUNTIME_METHODS[i];
   }
-
-  DEFAULT_LIBRARY_FUNCS_TO_INCLUDE = DEFAULT_LIBRARY_FUNCS_TO_INCLUDE.concat(EXPORTED_RUNTIME_METHODS);
 })();
 
