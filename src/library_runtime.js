@@ -16,6 +16,7 @@ RuntimeLibrary = {
     return func;
   },
 
+  CCALL__deps: ['getCFunc'],
   CCALL__postset: 'CCALL.init();',
   CCALL: {
     init: function() {
