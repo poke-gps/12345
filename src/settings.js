@@ -270,7 +270,9 @@ var ASYNCIFY_WHITELIST = ['qsort',   // Functions in this list are never conside
                           'MUSL_vfprintf']; 
 
 var EXPORTED_RUNTIME_METHODS = ['ccall',           // These are exported, i.e.  Module["FS_(name)"] = FS_(name)
-                                'cwrap'];
+                                'cwrap',
+                                'getValue',
+                                'setValue'];
 
 var EXPORTED_FS_METHODS = ['createFolder',         // These are exported, i.e.  Module["FS_(name)"] = FS_(name)
                            'createPath',
