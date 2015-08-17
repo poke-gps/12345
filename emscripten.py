@@ -439,8 +439,7 @@ function _emscripten_asm_const_%d(%s) {
     Counter.pre = []
 
     function_tables_defs = '\n'.join([info[0] for info in infos]) + '\n'
-    if not settings['EMULATED_FUNCTION_POINTERS']:
-      function_tables_defs += '\n// EMSCRIPTEN_END_FUNCS\n'
+    function_tables_defs += '\n// EMSCRIPTEN_END_FUNCS\n'
     function_tables_defs += '\n'.join([info[1] for info in infos])
 
     asm_setup = ''
@@ -610,6 +609,13 @@ function ftCall_%s(%s) {%s
 ''' % (sig, ', '.join(full_args), prelude, table_access, ', '.join(args))
         basic_funcs.append('ftCall_%s' % sig)
 
+        params = ','.join(['ptr'] + ['p%d' % p for p in range(len(sig)-1)])
+        coerced_params = ','.join([shared.JS.make_coercion('ptr', 'i')] + [shared.JS.make_coercion('p%d', unfloat(sig[p+1]), settings) % p for p in range(len(sig)-1)])
+        coercions = ';'.join(['ptr = ptr | 0'] + ['p%d = %s' % (p, shared.JS.make_coercion('p%d' % p, sig[p+1], settings)) for p in range(len(sig)-1)]) + ';'
+        mini_coerced_params = make_coerced_params(sig)
+        maybe_return = '' if sig[0] == 'v' else 'return'
+        funcs_js.append(make_func('mftCall_' + sig, 'if (((ptr|0) >= (fb|0)) & ((ptr|0) < (fb + {{{ FTM_' + sig + ' }}} | 0))) ' + maybe_return + ' ' + shared.JS.make_coercion('FUNCTION_TABLE_' + sig + '[ptr&{{{ FTM_' + sig + ' }}}](' + mini_coerced_params + ')', sig[0]) + '; ' + maybe_return + ' ' + shared.JS.make_coercion('ftCall_' + sig + '(' + coerced_params + ')', sig[0]) + ';', params, coercions))
+
     def quote(prop):
       if settings['USE_CLOSURE_COMPILER'] == 2:
         return "'" + prop + "'"
@@ -698,16 +704,16 @@ return real_''' + s + '''.apply(null, arguments);
 
     if DEBUG: logging.debug('asm text sizes' + str([map(len, funcs_js), len(asm_setup), len(asm_global_vars), len(asm_global_funcs), len(pre_tables), len('\n'.join(function_tables_impls)), len(function_tables_defs.replace('\n', '\n  ')), len(exports), len(the_global), len(sending), len(receiving)]))
 
-    if not settings.get('EMULATED_FUNCTION_POINTERS'):
-      final_function_tables = '\n'.join(function_tables_impls) + '\n' + function_tables_defs
-    else:
+    final_function_tables = '\n'.join(function_tables_impls) + '\n' + function_tables_defs
+    if settings.get('EMULATED_FUNCTION_POINTERS'):
       asm_setup += '\n' + '\n'.join(function_tables_impls) + '\n'
-      receiving += '\n' + function_tables_defs + '\n' + ''.join(['Module["dynCall_%s"] = dynCall_%s\n' % (sig, sig) for sig in last_forwarded_json['Functions']['tables']])
+      receiving += '\n' + function_tables_defs.replace('// EMSCRIPTEN_END_FUNCS\n', '') + '\n' + ''.join(['Module["dynCall_%s"] = dynCall_%s\n' % (sig, sig) for sig in last_forwarded_json['Functions']['tables']])
       for sig in last_forwarded_json['Functions']['tables'].keys():
         name = 'FUNCTION_TABLE_' + sig
         fullname = name if not settings['SIDE_MODULE'] else ('SIDE_' + name)
         receiving += 'Module["' + name + '"] = ' + fullname + ';\n'
-      final_function_tables = '\n// EMSCRIPTEN_END_FUNCS\n'
+
+      final_function_tables = final_function_tables.replace("asm['", '').replace("']", '').replace('var SIDE_FUNCTION_TABLE_', 'var FUNCTION_TABLE_').replace('var dynCall_', '//')
 
     if settings['RELOCATABLE']:
       receiving += '''
