@@ -614,7 +614,7 @@ function ftCall_%s(%s) {%s
         coercions = ';'.join(['ptr = ptr | 0'] + ['p%d = %s' % (p, shared.JS.make_coercion('p%d' % p, sig[p+1], settings)) for p in range(len(sig)-1)]) + ';'
         mini_coerced_params = make_coerced_params(sig)
         maybe_return = '' if sig[0] == 'v' else 'return'
-        funcs_js.append(make_func('mftCall_' + sig, 'if (((ptr|0) >= (fb|0)) & ((ptr|0) < (fb + {{{ FTM_' + sig + ' }}} | 0))) ' + maybe_return + ' ' + shared.JS.make_coercion('FUNCTION_TABLE_' + sig + '[(ptr-fb)&{{{ FTM_' + sig + ' }}}](' + mini_coerced_params + ')', sig[0], settings) + '; ' + maybe_return + ' ' + shared.JS.make_coercion('ftCall_' + sig + '(' + coerced_params + ')', sig[0], settings) + ';', params, coercions))
+        funcs_js.append(make_func('mftCall_' + sig, 'if (((ptr|0) >= (fb|0)) & ((ptr|0) < (fb + {{{ FTM_' + sig + ' }}} | 0))) { ' + maybe_return + ' ' + shared.JS.make_coercion('FUNCTION_TABLE_' + sig + '[(ptr-fb)&{{{ FTM_' + sig + ' }}}](' + mini_coerced_params + ')', sig[0], settings) + '; ' + ('return;' if sig[0] == 'v' else '') + ' }' + maybe_return + ' ' + shared.JS.make_coercion('ftCall_' + sig + '(' + coerced_params + ')', sig[0], settings) + ';', params, coercions))
 
     def quote(prop):
       if settings['USE_CLOSURE_COMPILER'] == 2:
