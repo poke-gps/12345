@@ -416,9 +416,11 @@ function _emscripten_asm_const_%d(%s) {
             specific_bad, specific_bad_func = make_bad(j)
             Counter.pre.append(specific_bad_func)
             return specific_bad if not newline else (specific_bad + '\n')
-        if item not in implemented_functions and not settings['EMULATED_FUNCTION_POINTERS']: # when emulating function pointers, we don't need wrappers
+        clean_item = item.replace("asm['", '').replace("']", '')
+        if clean_item not in implemented_functions and not (settings['EMULATED_FUNCTION_POINTERS'] and not settings['RELOCATABLE']): # when emulating function pointers, we don't need wrappers
+                                                                                                                                     # but if relocating, then we also have the copies in-module, and do
           # this is imported into asm, we must wrap it
-          call_ident = item
+          call_ident = clean_item
           if call_ident in metadata['redirects']: call_ident = metadata['redirects'][call_ident]
           if not call_ident.startswith('_') and not call_ident.startswith('Math_'): call_ident = '_' + call_ident
           code = call_ident + '(' + coerced_params + ')'
@@ -427,8 +429,8 @@ function _emscripten_asm_const_%d(%s) {
             if sig[0] == 'f': code = '+' + code
             code = 'return ' + shared.JS.make_coercion(code, sig[0], settings)
           code += ';'
-          Counter.pre.append(make_func(item + '__wrapper', code, params, coercions))
-          return item + '__wrapper'
+          Counter.pre.append(make_func(clean_item + '__wrapper', code, params, coercions))
+          return clean_item + '__wrapper'
         return item if not newline else (item + '\n')
       if settings['ASSERTIONS'] >= 2:
         debug_tables[sig] = body

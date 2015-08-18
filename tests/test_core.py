@@ -3833,6 +3833,28 @@ var Module = {
       void second();
     ''', need_reverse=False, auto_load=False)
 
+  def test_dylink_funcpointers_wrapper(self):
+    self.dylink_test(r'''
+      #include <stdio.h>
+      #include "header.h"
+      int main(int argc, char **argv) {
+        volatile charfunc f = emscripten_run_script;
+        f("Module.print('one')");
+        f = get();
+        f("Module.print('two')");
+        return 0;
+      }
+    ''', '''
+      #include "header.h"
+      charfunc get() {
+        return emscripten_run_script;
+      }
+    ''', 'one\ntwo\n', header='''
+      #include <emscripten.h>
+      typedef void (*charfunc)(const char*);
+      extern charfunc get();
+    ''')
+
   def test_dylink_global_init(self):
     self.dylink_test(r'''
       #include <stdio.h>
