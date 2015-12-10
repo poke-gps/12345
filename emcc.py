@@ -1292,6 +1292,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
       link_opts = [] if debug_level >= 4 else ['-strip-debug'] # remove LLVM debug if we are not asked for it
       if not shared.Settings.ASSERTIONS:
         link_opts += ['-disable-verify']
+      if shrink_level >= 2:
+        link_opts += ['-mergefunc']
 
       if llvm_lto >= 2 and llvm_opts > 0:
         logging.debug('running LLVM opts as pre-LTO')

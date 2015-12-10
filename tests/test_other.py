@@ -2681,6 +2681,18 @@ int main(int argc, char **argv) {
     assert opt_min - opt_max <= opt_max*0.1, 'opt builds are all fairly close'
     assert sizes['0'] > 1.20*opt_max, 'unopt build is quite larger'
 
+  def test_oz_mergefunc(self):
+    check_execute([PYTHON, EMCC, path_from_root('tests', 'raytrace.cpp'), '-Os', '-s', 'LINKABLE=1'])
+    os_size = os.stat('a.out.js').st_size
+    os_funcs = open('a.out.js').read().count('function ')
+    check_execute([PYTHON, EMCC, path_from_root('tests', 'raytrace.cpp'), '-Oz', '-s', 'LINKABLE=1'])
+    oz_size = os.stat('a.out.js').st_size
+    oz_funcs = open('a.out.js').read().count('function ')
+    print os_size, oz_size
+    print os_funcs, oz_funcs
+    assert oz_size < os_size
+    assert oz_funcs < os_funcs
+
   def test_global_inits(self):
     open('inc.h', 'w').write(r'''
 #include <stdio.h>
