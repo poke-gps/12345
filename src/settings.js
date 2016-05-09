@@ -633,6 +633,10 @@ var BINARYEN_IMPRECISE = 0; // Whether to apply imprecise/unsafe binaryen optimi
                             // trap in wasm.
 var BINARYEN_ROOT = ""; // Directory where we can find Binaryen. Will be automatically set for you,
                         // but you can set it to override if you are a Binaryen developer.
+var BINARYEN_METADATA_FILE = ""; // A filename where we receive metadata. This is for when you provide
+                                 // emcc with a single already-compiled WebAssembly input, and this is
+                                 // its metadata, which allows us to then link with JS, do filesystem
+                                 // stuff, etc., all without modifying the WebAssembly code.
 
 var WASM_BACKEND = 0; // Whether to use the WebAssembly backend that is in development in LLVM.
                       // This requires that BINARYEN be set, as we use Binaryen's s2wasm to

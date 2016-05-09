@@ -6384,3 +6384,25 @@ int main() {
     
     stdout, stderr = Popen([PYTHON, EMCC, '-Wall', '-std=c++14', 'src_tmp_fixed_lang'], stderr=PIPE).communicate()
     self.assertContained("Input file has an unknown suffix, don't know what to do with it!", stderr)
+
+  def test_binaryen_metadata(self):
+    check_execute([PYTHON, EMCC, path_from_root('tests', 'hello_world.cpp'), '-s', 'BINARYEN=1'])
+    shutil.copyfile('a.out.wasm', 'the.wasm')
+    open('metadata', 'w').write('''{
+      "declares": ["__syscall6", "pthread_self", "pthread_cleanup_push", "pthread_cleanup_pop", "__syscall140", "__syscall146", "__syscall54", "__lock", "__unlock", "abort", "sbrk", "i64Add", "i64Subtract", "__udivdi3", "__uremdi3", "bitshift64Lshr", "bitshift64Shl", "memcpy", "memset"],
+      "implementedFunctions": ["_main", "___stdio_close", "___syscall_ret", "___errno_location", "___unlockfile", "___stdio_seek", "___stdio_write", "_cleanup", "___stdout_write", "_frexp", "_frexpl", "_vfprintf", "_printf_core", "___fwritex", "___towrite", "_pop_arg_334", "_fmt_", "_strerror", "_memchr", "_pad", "_wctomb", "_wcrtomb", "___lockfile", "_fflush", "___fflush_unlocked", "_printf", "_malloc", "_free"],
+      "externs": [],
+      "simd": 0,
+      "maxGlobalAlign": 4,
+      "initializers": [],
+      "exports": [],
+      "staticBump": 102400,
+      "asmConsts": {}
+    }''')
+    check_execute([PYTHON, EMCC, '-s', 'BINARYEN=1', 'the.wasm', '-s', 'BINARYEN_METADATA_FILE="metadata"', '-o', 'm.js'])
+    self.assertContained('hello, world!', run_js('m.js'))
+
+    #TODO: test we provide metadata
+    # TODO: just one wasm input, and nothing else
+    # if binaryen_metadata, then has a wasm input
+    # TODO: metadata_file and also no file

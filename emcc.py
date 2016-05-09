@@ -44,6 +44,10 @@ DYNAMICLIB_ENDINGS = ('.dylib', '.so') # Windows .dll suffix is not included in 
 STATICLIB_ENDINGS = ('.a',)
 ASSEMBLY_ENDINGS = ('.ll',)
 HEADER_ENDINGS = ('.h', '.hxx', '.hpp', '.hh', '.H', '.HXX', '.HPP', '.HH')
+WASM_ENDINGS = ('.wasm',)
+
+INPUT_ENDINGS = SOURCE_ENDINGS + BITCODE_ENDINGS + DYNAMICLIB_ENDINGS + ASSEMBLY_ENDINGS + HEADER_ENDINGS + WASM_ENDINGS
+
 SUPPORTED_LINKER_FLAGS = ('--start-group', '-(', '--end-group', '-)')
 
 LIB_PREFIXES = ('', 'lib')
@@ -791,6 +795,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
 
     has_source_inputs = False
     has_header_inputs = False
+    wasm_input = None
     lib_dirs = [shared.path_from_root('system', 'local', 'lib'),
                 shared.path_from_root('system', 'lib')]
     for i in range(len(newargs)): # find input files XXX this a simple heuristic. we should really analyze based on a full understanding of gcc params,
@@ -801,7 +806,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
         prev = newargs[i-1]
         if prev in ['-MT', '-MF', '-MQ', '-D', '-U', '-o', '-x', '-Xpreprocessor', '-include', '-imacros', '-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '-imultilib', '-A', '-isystem', '-iquote', '-install_name', '-compatibility_version', '-current_version', '-I', '-L', '-include-pch']: continue # ignore this gcc-style argument
 
-      if os.path.islink(arg) and os.path.realpath(arg).endswith(SOURCE_ENDINGS + BITCODE_ENDINGS + DYNAMICLIB_ENDINGS + ASSEMBLY_ENDINGS + HEADER_ENDINGS):
+      if os.path.islink(arg) and os.path.realpath(arg).endswith(INPUT_ENDINGS):
         arg = os.path.realpath(arg)
 
       if not arg.startswith('-'):
@@ -810,7 +815,11 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
           exit(1)
 
         arg_ending = filename_type_ending(arg)
-        if arg_ending.endswith(SOURCE_ENDINGS + BITCODE_ENDINGS + DYNAMICLIB_ENDINGS + ASSEMBLY_ENDINGS + HEADER_ENDINGS) or shared.Building.is_ar(arg): # we already removed -o <target>, so all these should be inputs
+
+        if arg_ending.endswith(WASM_ENDINGS):
+          assert not wasm_input, 'can have at most one wasm input'
+          wasm_input = arg
+        elif arg_ending.endswith(INPUT_ENDINGS) or shared.Building.is_ar(arg): # we already removed -o <target>, so all these should be inputs
           newargs[i] = ''
           if arg_ending.endswith(SOURCE_ENDINGS):
             input_files.append((i, arg))
@@ -926,8 +935,8 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
           return True
       input_files = [(i, input_file) for (i, input_file) in input_files if check(input_file)]
 
-    if len(input_files) == 0:
-      logging.error('no input files\nnote that input files without a known suffix are ignored, make sure your input files end with one of: ' + str(SOURCE_ENDINGS + BITCODE_ENDINGS + DYNAMICLIB_ENDINGS + STATICLIB_ENDINGS + ASSEMBLY_ENDINGS + HEADER_ENDINGS))
+    if len(input_files) == 0 and not wasm_input:
+      logging.error('no input files\nnote that input files without a known suffix are ignored, make sure your input files end with one of: ' + str(INPUT_ENDINGS + STATICLIB_ENDINGS))
       exit(1)
 
     newargs = CC_ADDITIONAL_ARGS + newargs
@@ -1178,6 +1187,10 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
     if shared.Settings.GLOBAL_BASE < 0:
       shared.Settings.GLOBAL_BASE = 8 # default if nothing else sets it
 
+    if wasm_input:
+      assert len(input_files) == 0, 'can have just one input when there is wasm as input'
+      assert shared.Settings.BINARYEN_METADATA_FILE, 'must have metadata when there is wasm as input'
+      
     shared.Settings.EMSCRIPTEN_VERSION = shared.EMSCRIPTEN_VERSION
     shared.Settings.OPT_LEVEL = opt_level
     shared.Settings.DEBUG_LEVEL = debug_level
@@ -1869,7 +1882,7 @@ There is NO warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR P
     shutil.move(final, js_target)
 
     # Separate out the asm.js code, if asked. Or, if necessary for another option
-    if (separate_asm or shared.Settings.BINARYEN) and not shared.Settings.WASM_BACKEND:
+    if (separate_asm or shared.Settings.BINARYEN) and not shared.Settings.WASM_BACKEND and not shared.Settings.BINARYEN_METADATA_FILE:
       logging.debug('separating asm')
       temp_target = misc_temp_files.get(suffix='.js').name
       subprocess.check_call([shared.PYTHON, shared.path_from_root('tools', 'separate_asm.py'), js_target, asm_target, temp_target])

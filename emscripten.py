@@ -1283,6 +1283,12 @@ Runtime.registerFunctions(%(sigs)s, Module);
       with open(cd_file_name, "w") as cd_file:
         json.dump({ 'cyberdwarf': metadata['cyberdwarf_data'] }, cd_file)
 
+def asmjs_mangle(name):
+  # Mangle a name the way asm.js/JSBackend globals are mangled (i.e. prepend
+  # '_' and replace non-alphanumerics with '_')
+  if name.startswith('dynCall_'): return name
+  return '_' + ''.join(['_' if not c.isalnum() else c for c in name])
+
 def emscript_wasm_backend(infile, settings, outfile, libraries=None, compiler_engine=None,
                           temp_files=None, DEBUG=None):
   # Overview:
@@ -1355,12 +1361,6 @@ def emscript_wasm_backend(infile, settings, outfile, libraries=None, compiler_en
   for k, v in metadata_json.iteritems():
     metadata[k] = v
 
-  def asmjs_mangle(name):
-    # Mangle a name the way asm.js/JSBackend globals are mangled (i.e. prepend
-    # '_' and replace non-alphanumerics with '_')
-    if name.startswith('dynCall_'): return name
-    return '_' + ''.join(['_' if not c.isalnum() else c for c in name])
-
   # Initializers call the global var version of the export, so they get the mangled name.
   metadata['initializers'] = [asmjs_mangle(i) for i in metadata['initializers']]
 
@@ -1382,6 +1382,18 @@ def emscript_wasm_backend(infile, settings, outfile, libraries=None, compiler_en
   metadata['declares'] = filter(lambda x: not x.startswith('emscripten_asm_const'), metadata['declares']) # we emit those ourselves
 
   if DEBUG: logging.debug(repr(metadata))
+
+  emscript_with_metadata(infile, settings, outfile, libraries, compiler_engine,
+                          temp_files, DEBUG)
+
+def emscript_with_metadata(infile, settings, outfile, libraries=None, compiler_engine=None,
+                           temp_files=None, DEBUG=None, metadata=None):
+
+  if not metadata:
+    metadata = open(settings['BINARYEN_METADATA_FILE']).read()
+    if DEBUG: logging.debug("METARAW " + metadata)
+    metadata = json.loads(metadata)
+    if DEBUG: logging.debug("METADATA " + metadata)
 
   settings['DEFAULT_LIBRARY_FUNCS_TO_INCLUDE'] = list(
     set(settings['DEFAULT_LIBRARY_FUNCS_TO_INCLUDE'] + map(shared.JS.to_nice_ident, metadata['declares'])).difference(
@@ -1601,7 +1613,12 @@ def main(args, compiler_engine, cache, temp_files, DEBUG):
     shared.Building.ensure_struct_info(struct_info)
     if DEBUG: logging.debug('  emscript: bootstrapping struct info complete')
 
-  emscripter = emscript_wasm_backend if settings['WASM_BACKEND'] else emscript
+  if settings['WASM_BACKEND']:
+    emscripter = emscript_wasm_backend
+  elif settings['BINARYEN_METADATA_FILE']:
+    emscripter = emscript_with_metadata
+  else:
+    emscripter = emscript
 
   emscripter(args.infile, settings, args.outfile, libraries, compiler_engine=compiler_engine,
              temp_files=temp_files, DEBUG=DEBUG)

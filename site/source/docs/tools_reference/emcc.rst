@@ -18,6 +18,8 @@ Command line syntax
 
 The input file(s) can be either source code files that *Clang* can handle (C or C++), LLVM bitcode in binary form, or LLVM assembly files in human-readable form.
 
+You can also provide a WebAssembly file as an input, with an optional metadata file provided in ``BINARYEN_METADATA_FILE``. The WebAssembly file will not be modified, while the metadata will be used to link with JS libraries and so forth. This allows you to use emscripten from an arbitrary compiler that emits WebAssembly.
+
 
 Arguments
 ---------
